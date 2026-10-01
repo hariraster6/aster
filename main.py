@@ -14,7 +14,14 @@ from datetime import datetime, timezone, timedelta
 from urllib.parse import quote
 from collections import deque, defaultdict
 
-from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect, Depends
+from fastapi import (
+    FastAPI,
+    Request,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+    Depends,
+)
 from fastapi.responses import Response, HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -27,12 +34,16 @@ try:
     import telebot
     from telebot.async_telebot import AsyncTeleBot
     from telebot import types
+
     TELEBOT_AVAILABLE = True
 except ImportError:
     TELEBOT_AVAILABLE = False
-    print("WARNING: Please install pyTelegramBotAPI to enable the Telegram Bot: pip install pyTelegramBotAPI")
+    print(
+        "WARNING: Please install pyTelegramBotAPI to enable the Telegram Bot: pip install pyTelegramBotAPI"
+    )
 
 log_queue = deque(maxlen=150)
+
 
 class QueueHandler(logging.Handler):
     def emit(self, record):
@@ -42,11 +53,16 @@ class QueueHandler(logging.Handler):
         except Exception:
             pass
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 logger = logging.getLogger("Luffy-Gateway")
 
 q_handler = QueueHandler()
-q_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+q_handler.setFormatter(
+    logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+)
 logger.addHandler(q_handler)
 logging.getLogger("uvicorn.error").addHandler(q_handler)
 logging.getLogger("uvicorn.access").addHandler(q_handler)
@@ -60,12 +76,15 @@ PANEL_VERSION = "1.1.0"
 # GitHub repo checked for update notifications
 GITHUB_REPO = "luffy-sh-op/LUFFY_PANEL"
 
+
 async def check_github_latest(force: bool = False) -> dict:
     """Fetches the latest release tag from GitHub, caches in SQLite.
     Only actually calls the API if force=True or no cached data exists."""
     conn = get_db()
     try:
-        cur = conn.execute("SELECT latest_tag, latest_url, checked_at FROM github_cache WHERE id = 1")
+        cur = conn.execute(
+            "SELECT latest_tag, latest_url, checked_at FROM github_cache WHERE id = 1"
+        )
         row = cur.fetchone()
     finally:
         conn.close()
@@ -94,19 +113,27 @@ async def check_github_latest(force: bool = False) -> dict:
             new_tag = data.get("tag_name") or data.get("name")
             new_url = data.get("html_url")
         else:
-            r2 = await http_client.get(f"https://api.github.com/repos/{GITHUB_REPO}/commits/main")
+            r2 = await http_client.get(
+                f"https://api.github.com/repos/{GITHUB_REPO}/commits/main"
+            )
             if r2.status_code == 200:
                 data2 = r2.json()
                 sha = data2.get("sha") or ""
                 new_tag = sha[:7] if sha else cached_tag
-                new_url = f"https://github.com/{GITHUB_REPO}/commit/{sha}" if sha else cached_url
+                new_url = (
+                    f"https://github.com/{GITHUB_REPO}/commit/{sha}"
+                    if sha
+                    else cached_url
+                )
     except Exception as e:
         logger.warning(f"GitHub version check failed: {e}")
 
     conn = get_db()
     try:
-        conn.execute("INSERT OR REPLACE INTO github_cache (id, latest_tag, latest_url, checked_at) VALUES (1, ?, ?, ?)",
-                     (new_tag, new_url, now))
+        conn.execute(
+            "INSERT OR REPLACE INTO github_cache (id, latest_tag, latest_url, checked_at) VALUES (1, ?, ?, ?)",
+            (new_tag, new_url, now),
+        )
         conn.commit()
     finally:
         conn.close()
@@ -136,12 +163,21 @@ async def github_check_loop():
 
 # ── Notifications ────────────────────────────────────────────────────────
 
-async def create_notification(type: str, title: str, message: str, link: str | None = None):
+
+async def create_notification(
+    type: str, title: str, message: str, link: str | None = None
+):
     conn = get_db()
     try:
         conn.execute(
             "INSERT INTO notifications (type, title, message, link, created_at) VALUES (?, ?, ?, ?, ?)",
-            (type, title, message, link, datetime.now(timezone.utc).isoformat()),
+            (
+                type,
+                title,
+                message,
+                link,
+                datetime.now(timezone.utc).isoformat(),
+            ),
         )
         conn.commit()
     except Exception as e:
@@ -149,14 +185,18 @@ async def create_notification(type: str, title: str, message: str, link: str | N
     finally:
         conn.close()
 
+
 async def get_unread_notification_count() -> int:
     conn = get_db()
     try:
-        cur = conn.execute("SELECT COUNT(*) as cnt FROM notifications WHERE seen = 0")
+        cur = conn.execute(
+            "SELECT COUNT(*) as cnt FROM notifications WHERE seen = 0"
+        )
         row = cur.fetchone()
         return row["cnt"] if row else 0
     finally:
         conn.close()
+
 
 async def get_notifications(limit: int = 50) -> list:
     conn = get_db()
@@ -168,6 +208,7 @@ async def get_notifications(limit: int = 50) -> list:
         return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
+
 
 def _get_or_create_secret() -> str:
     """Returns a stable secret key across restarts.
@@ -196,8 +237,11 @@ def _get_or_create_secret() -> str:
         with open(secret_file, "w", encoding="utf-8") as f:
             f.write(new_secret)
     except Exception as e:
-        logger.warning(f"Could not persist secret.key, sessions/passwords will reset on restart: {e}")
+        logger.warning(
+            f"Could not persist secret.key, sessions/passwords will reset on restart: {e}"
+        )
     return new_secret
+
 
 CONFIG = {
     "port": int(os.environ.get("PORT", 8000)),
@@ -209,14 +253,25 @@ CONFIG = {
     "notify_connections": "0",
 }
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/client", StaticFiles(directory="client"), name="client")
 
 connections: dict = {}
 connections_lock = asyncio.Lock()
 connection_sockets: dict = {}
 link_ip_map: dict = defaultdict(set)
-stats = {"total_bytes": 0, "total_requests": 0, "total_errors": 0, "start_time": time.time()}
+stats = {
+    "total_bytes": 0,
+    "total_requests": 0,
+    "total_errors": 0,
+    "start_time": time.time(),
+}
 error_logs: deque = deque(maxlen=50)
 hourly_traffic: dict = defaultdict(int)
 daily_traffic: dict = defaultdict(int)
@@ -248,11 +303,13 @@ DEFAULT_TRANSPORT = "ws"
 PROTOCOLS = tuple(f"{a}-{t}" for a in AUTH_TYPES for t in TRANSPORTS)
 DEFAULT_PROTOCOL = f"{DEFAULT_AUTH}-{DEFAULT_TRANSPORT}"
 
+
 def split_protocol(protocol: str) -> tuple[str, str]:
     """مقدار ذخیره‌شده‌ی protocol ("auth-transport") رو به دو بخش auth/transport می‌شکونه."""
     protocol = normalize_protocol(protocol)
     auth, transport = protocol.split("-", 1)
     return auth, transport
+
 
 def normalize_protocol(value: str | None) -> str:
     """قدیم‌ترها مقدار protocol فقط ترابرد بود (مثلاً 'xhttp-packet-up' بدون
@@ -265,12 +322,31 @@ def normalize_protocol(value: str | None) -> str:
         return f"vless-{value}"
     return DEFAULT_PROTOCOL
 
+
 # Fingerprint (uTLS) های قابل انتخاب برای هر کانفیگ — مستقل برای هر پروتکل انتخاب می‌شه
-FINGERPRINTS = ("chrome", "firefox", "safari", "ios", "android", "edge", "360", "qq", "random", "randomized")
+FINGERPRINTS = (
+    "chrome",
+    "firefox",
+    "safari",
+    "ios",
+    "android",
+    "edge",
+    "360",
+    "qq",
+    "random",
+    "randomized",
+)
 DEFAULT_FINGERPRINT = "chrome"
 
 # لیست بسته‌ی ALPNهای قابل‌انتخاب (دیگه فیلد آزاد نیست) — مستقل برای هر پروتکل انتخاب می‌شه
-ALPN_OPTIONS = ("h3", "h2", "http/1.1", "h3,h2,http/1.1", "h3,h2", "h2,http/1.1")
+ALPN_OPTIONS = (
+    "h3",
+    "h2",
+    "http/1.1",
+    "h3,h2,http/1.1",
+    "h3,h2",
+    "h2,http/1.1",
+)
 
 # پیش‌فرض ALPN بر اساس نوع ترابرد، وقتی کاربر مقدار انتخاب نکرده (auth روی این تاثیری نداره)
 DEFAULT_ALPN_BY_PROTOCOL = {}
@@ -288,11 +364,23 @@ del _auth
 #   }
 # حداقل یکی از دو تا باید enabled باشه.
 
+
 def default_variants() -> dict:
     return {
-        "vless": {"enabled": True, "transport": DEFAULT_TRANSPORT, "fingerprint": DEFAULT_FINGERPRINT, "alpn": DEFAULT_ALPN_BY_PROTOCOL["vless-ws"]},
-        "trojan": {"enabled": False, "transport": DEFAULT_TRANSPORT, "fingerprint": DEFAULT_FINGERPRINT, "alpn": DEFAULT_ALPN_BY_PROTOCOL["trojan-ws"]},
+        "vless": {
+            "enabled": True,
+            "transport": DEFAULT_TRANSPORT,
+            "fingerprint": DEFAULT_FINGERPRINT,
+            "alpn": DEFAULT_ALPN_BY_PROTOCOL["vless-ws"],
+        },
+        "trojan": {
+            "enabled": False,
+            "transport": DEFAULT_TRANSPORT,
+            "fingerprint": DEFAULT_FINGERPRINT,
+            "alpn": DEFAULT_ALPN_BY_PROTOCOL["trojan-ws"],
+        },
     }
+
 
 def sanitize_variant(v: dict | None, auth: str) -> dict:
     v = v or {}
@@ -305,14 +393,23 @@ def sanitize_variant(v: dict | None, auth: str) -> dict:
     alpn = str(v.get("alpn") or "").strip()
     if alpn not in ALPN_OPTIONS:
         alpn = DEFAULT_ALPN_BY_PROTOCOL.get(f"{auth}-{transport}", "http/1.1")
-    return {"enabled": bool(v.get("enabled", False)), "transport": transport, "fingerprint": fp, "alpn": alpn}
+    return {
+        "enabled": bool(v.get("enabled", False)),
+        "transport": transport,
+        "fingerprint": fp,
+        "alpn": alpn,
+    }
+
 
 def sanitize_variants(variants: dict | None) -> dict:
     variants = variants or {}
-    result = {auth: sanitize_variant(variants.get(auth), auth) for auth in AUTH_TYPES}
+    result = {
+        auth: sanitize_variant(variants.get(auth), auth) for auth in AUTH_TYPES
+    }
     if not any(result[a]["enabled"] for a in AUTH_TYPES):
         result["vless"]["enabled"] = True  # حداقل یکی باید فعال بمونه
     return result
+
 
 def variants_from_legacy(protocol: str, fingerprint: str, alpn: str) -> dict:
     """کانفیگ‌های قدیمی که فقط یک protocol/fingerprint/alpn ستونی داشتن رو به فرمت جدید تبدیل می‌کنه."""
@@ -321,19 +418,27 @@ def variants_from_legacy(protocol: str, fingerprint: str, alpn: str) -> dict:
     for a in AUTH_TYPES:
         variants[a]["enabled"] = False
     variants[auth] = {
-        "enabled": True, "transport": transport,
+        "enabled": True,
+        "transport": transport,
         "fingerprint": fingerprint or DEFAULT_FINGERPRINT,
-        "alpn": alpn or DEFAULT_ALPN_BY_PROTOCOL.get(f"{auth}-{transport}", "http/1.1"),
+        "alpn": alpn
+        or DEFAULT_ALPN_BY_PROTOCOL.get(f"{auth}-{transport}", "http/1.1"),
     }
     return variants
+
 
 def variants_to_legacy(variants: dict) -> tuple[str, str, str]:
     """برای پرشدن ستون‌های قدیمی protocol/fingerprint/alpn (صرفاً برای سازگاری با ابزارهای بیرونی)."""
     for auth in AUTH_TYPES:
         v = (variants or {}).get(auth, {})
         if v.get("enabled"):
-            return f"{auth}-{v.get('transport', DEFAULT_TRANSPORT)}", v.get("fingerprint", DEFAULT_FINGERPRINT), v.get("alpn", "")
+            return (
+                f"{auth}-{v.get('transport', DEFAULT_TRANSPORT)}",
+                v.get("fingerprint", DEFAULT_FINGERPRINT),
+                v.get("alpn", ""),
+            )
     return DEFAULT_PROTOCOL, DEFAULT_FINGERPRINT, ""
+
 
 def variants_from_body(body: dict, base: dict | None = None) -> dict:
     """بدنه‌ی JSON درخواست (فیلدهای vless_enabled/vless_transport/... و trojan_*) رو
@@ -354,11 +459,16 @@ def variants_from_body(body: dict, base: dict | None = None) -> dict:
         result[auth] = cur
     return sanitize_variants(result)
 
+
 DB_FILE = "/data/panel.db" if os.path.isdir("/data") else "panel.db"
 if os.path.isdir("/data"):
-    logger.warning(f"[STARTUP] Persistent volume detected at /data -> using {DB_FILE} (data survives restarts/deploys)")
+    logger.warning(
+        f"[STARTUP] Persistent volume detected at /data -> using {DB_FILE} (data survives restarts/deploys)"
+    )
 else:
-    logger.warning(f"[STARTUP] NO persistent volume found at /data -> using EPHEMERAL {DB_FILE} (ALL links/data will be LOST on next restart/deploy!)")
+    logger.warning(
+        f"[STARTUP] NO persistent volume found at /data -> using EPHEMERAL {DB_FILE} (ALL links/data will be LOST on next restart/deploy!)"
+    )
 DB_LOCK = asyncio.Lock()
 bot = None
 bot_polling_task: asyncio.Task | None = None
@@ -532,16 +642,25 @@ BOT_I18N = {
     },
 }
 
+
 def bot_lang() -> str:
-    return CONFIG.get("bot_lang") if CONFIG.get("bot_lang") in ("en", "fa") else "en"
+    return (
+        CONFIG.get("bot_lang")
+        if CONFIG.get("bot_lang") in ("en", "fa")
+        else "en"
+    )
+
 
 def L(key: str, **kwargs) -> str:
     lang = bot_lang()
-    template = BOT_I18N.get(lang, BOT_I18N["en"]).get(key) or BOT_I18N["en"].get(key, key)
+    template = BOT_I18N.get(lang, BOT_I18N["en"]).get(key) or BOT_I18N[
+        "en"
+    ].get(key, key)
     try:
         return template.format(**kwargs)
     except Exception:
         return template
+
 
 def build_main_keyboard():
     if not TELEBOT_AVAILABLE:
@@ -551,13 +670,21 @@ def build_main_keyboard():
         types.InlineKeyboardButton(L("btn_stats"), callback_data="tg_stats"),
         types.InlineKeyboardButton(L("btn_users"), callback_data="tg_users"),
         types.InlineKeyboardButton(L("btn_top"), callback_data="tg_top"),
-        types.InlineKeyboardButton(L("btn_create"), callback_data="tg_create_guide"),
-        types.InlineKeyboardButton(L("btn_addip"), callback_data="tg_add_ip_guide"),
-        types.InlineKeyboardButton(L("btn_lang"), callback_data="tg_lang_toggle"),
+        types.InlineKeyboardButton(
+            L("btn_create"), callback_data="tg_create_guide"
+        ),
+        types.InlineKeyboardButton(
+            L("btn_addip"), callback_data="tg_add_ip_guide"
+        ),
+        types.InlineKeyboardButton(
+            L("btn_lang"), callback_data="tg_lang_toggle"
+        ),
     )
     return kb
 
+
 # ── SQLite Database ──────────────────────────────────────────────────────
+
 
 def get_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -565,6 +692,7 @@ def get_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
 
 def init_db():
     conn = get_db()
@@ -617,13 +745,25 @@ def init_db():
     """)
     conn.commit()
     # Migrate older DBs created before protocol/fingerprint/alpn/port existed
-    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(links)").fetchall()}
+    existing_cols = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(links)").fetchall()
+    }
     for col, ddl in (
-        ("protocol", "ALTER TABLE links ADD COLUMN protocol TEXT DEFAULT 'vless-ws'"),
-        ("fingerprint", "ALTER TABLE links ADD COLUMN fingerprint TEXT DEFAULT 'chrome'"),
+        (
+            "protocol",
+            "ALTER TABLE links ADD COLUMN protocol TEXT DEFAULT 'vless-ws'",
+        ),
+        (
+            "fingerprint",
+            "ALTER TABLE links ADD COLUMN fingerprint TEXT DEFAULT 'chrome'",
+        ),
         ("alpn", "ALTER TABLE links ADD COLUMN alpn TEXT DEFAULT ''"),
         ("port", "ALTER TABLE links ADD COLUMN port INTEGER DEFAULT 443"),
-        ("variants_json", "ALTER TABLE links ADD COLUMN variants_json TEXT DEFAULT ''"),
+        (
+            "variants_json",
+            "ALTER TABLE links ADD COLUMN variants_json TEXT DEFAULT ''",
+        ),
     ):
         if col not in existing_cols:
             conn.execute(ddl)
@@ -632,12 +772,16 @@ def init_db():
     cur = conn.execute("SELECT password_hash FROM auth WHERE id = 1")
     row = cur.fetchone()
     if row is None:
-        conn.execute("INSERT INTO auth (id, password_hash) VALUES (1, ?)", (AUTH["password_hash"],))
+        conn.execute(
+            "INSERT INTO auth (id, password_hash) VALUES (1, ?)",
+            (AUTH["password_hash"],),
+        )
         conn.commit()
     else:
         AUTH["password_hash"] = row["password_hash"]
     conn.close()
     migrate_json_to_sqlite()
+
 
 def migrate_json_to_sqlite():
     json_file = "panel_db.json"
@@ -650,34 +794,64 @@ def migrate_json_to_sqlite():
         # Migrate auth
         pw = data.get("auth_hash")
         if pw:
-            conn.execute("INSERT OR REPLACE INTO auth (id, password_hash) VALUES (1, ?)", (pw,))
+            conn.execute(
+                "INSERT OR REPLACE INTO auth (id, password_hash) VALUES (1, ?)",
+                (pw,),
+            )
             AUTH["password_hash"] = pw
         # Migrate links
         links = data.get("links", {})
         for uid, link in links.items():
-            variants = variants_from_legacy(link.get("protocol", DEFAULT_PROTOCOL), link.get("fingerprint", DEFAULT_FINGERPRINT), link.get("alpn", ""))
-            legacy_protocol, legacy_fp, legacy_alpn = variants_to_legacy(variants)
-            conn.execute("""
+            variants = variants_from_legacy(
+                link.get("protocol", DEFAULT_PROTOCOL),
+                link.get("fingerprint", DEFAULT_FINGERPRINT),
+                link.get("alpn", ""),
+            )
+            legacy_protocol, legacy_fp, legacy_alpn = variants_to_legacy(
+                variants
+            )
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO links (uuid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, protocol, fingerprint, alpn, port, variants_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (uid, link.get("label", uid), link.get("limit_bytes", 0), link.get("used_bytes", 0),
-                  link.get("max_connections", 0), link.get("created_at", datetime.now(timezone.utc).isoformat()),
-                  1 if link.get("active", True) else 0, link.get("expires_at"),
-                  legacy_protocol, legacy_fp, legacy_alpn, link.get("port", DEFAULT_PORT),
-                  json.dumps(variants)))
+            """,
+                (
+                    uid,
+                    link.get("label", uid),
+                    link.get("limit_bytes", 0),
+                    link.get("used_bytes", 0),
+                    link.get("max_connections", 0),
+                    link.get(
+                        "created_at", datetime.now(timezone.utc).isoformat()
+                    ),
+                    1 if link.get("active", True) else 0,
+                    link.get("expires_at"),
+                    legacy_protocol,
+                    legacy_fp,
+                    legacy_alpn,
+                    link.get("port", DEFAULT_PORT),
+                    json.dumps(variants),
+                ),
+            )
             LINKS[uid] = dict(link)
             LINKS[uid]["variants"] = variants
         # Migrate addresses
         addresses = data.get("custom_addresses", [])
         CUSTOM_ADDRESSES.clear()
         for addr in addresses:
-            conn.execute("INSERT OR IGNORE INTO custom_addresses (address) VALUES (?)", (addr,))
+            conn.execute(
+                "INSERT OR IGNORE INTO custom_addresses (address) VALUES (?)",
+                (addr,),
+            )
             CUSTOM_ADDRESSES.append(addr)
         # Migrate settings
         for key in ("telegram_token", "telegram_admin_id", "bot_lang"):
             val = data.get(key)
             if val:
-                conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(val)))
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (key, str(val)),
+                )
                 CONFIG[key] = val
         conn.commit()
         # Backup and remove old JSON
@@ -688,38 +862,70 @@ def migrate_json_to_sqlite():
     finally:
         conn.close()
 
+
 async def save_db():
     conn = get_db()
     try:
         async with DB_LOCK:
             # Save auth
-            conn.execute("INSERT OR REPLACE INTO auth (id, password_hash) VALUES (1, ?)", (AUTH["password_hash"],))
+            conn.execute(
+                "INSERT OR REPLACE INTO auth (id, password_hash) VALUES (1, ?)",
+                (AUTH["password_hash"],),
+            )
             # Save links
             async with LINKS_LOCK:
                 for uid, link in list(LINKS.items()):
                     variants = sanitize_variants(link.get("variants"))
-                    legacy_protocol, legacy_fp, legacy_alpn = variants_to_legacy(variants)
-                    conn.execute("""
+                    legacy_protocol, legacy_fp, legacy_alpn = (
+                        variants_to_legacy(variants)
+                    )
+                    conn.execute(
+                        """
                         INSERT OR REPLACE INTO links (uuid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at, protocol, fingerprint, alpn, port, variants_json)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (uid, link["label"], link["limit_bytes"], link["used_bytes"],
-                          link.get("max_connections", 0), link["created_at"],
-                          1 if link.get("active", True) else 0, link.get("expires_at"),
-                          legacy_protocol, legacy_fp, legacy_alpn, link.get("port", DEFAULT_PORT),
-                          json.dumps(variants)))
+                    """,
+                        (
+                            uid,
+                            link["label"],
+                            link["limit_bytes"],
+                            link["used_bytes"],
+                            link.get("max_connections", 0),
+                            link["created_at"],
+                            1 if link.get("active", True) else 0,
+                            link.get("expires_at"),
+                            legacy_protocol,
+                            legacy_fp,
+                            legacy_alpn,
+                            link.get("port", DEFAULT_PORT),
+                            json.dumps(variants),
+                        ),
+                    )
             # Save addresses
             async with CUSTOM_ADDRESSES_LOCK:
                 conn.execute("DELETE FROM custom_addresses")
                 for addr in CUSTOM_ADDRESSES:
-                    conn.execute("INSERT INTO custom_addresses (address) VALUES (?)", (addr,))
+                    conn.execute(
+                        "INSERT INTO custom_addresses (address) VALUES (?)",
+                        (addr,),
+                    )
             # Save settings
-            for key in ("telegram_token", "telegram_admin_id", "bot_lang", "railway_token", "notify_connections"):
-                conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, CONFIG.get(key, "")))
+            for key in (
+                "telegram_token",
+                "telegram_admin_id",
+                "bot_lang",
+                "railway_token",
+                "notify_connections",
+            ):
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (key, CONFIG.get(key, "")),
+                )
             conn.commit()
     except Exception as e:
         logger.error(f"Error saving DB: {e}")
     finally:
         conn.close()
+
 
 def load_db():
     global CUSTOM_ADDRESSES, LINKS
@@ -734,7 +940,9 @@ def load_db():
         LINKS.clear()
         cur = conn.execute("SELECT * FROM links")
         for row in cur.fetchall():
-            variants_raw = row["variants_json"] if "variants_json" in row.keys() else None
+            variants_raw = (
+                row["variants_json"] if "variants_json" in row.keys() else None
+            )
             variants = None
             if variants_raw:
                 try:
@@ -742,7 +950,9 @@ def load_db():
                 except Exception:
                     variants = None
             if variants is None:
-                variants = variants_from_legacy(row["protocol"], row["fingerprint"], row["alpn"])
+                variants = variants_from_legacy(
+                    row["protocol"], row["fingerprint"], row["alpn"]
+                )
             LINKS[row["uuid"]] = {
                 "label": row["label"],
                 "limit_bytes": row["limit_bytes"],
@@ -764,7 +974,10 @@ def load_db():
         # تو دیتابیس ذخیره شده باشه.
         if "www.speedtest.net" in CUSTOM_ADDRESSES:
             CUSTOM_ADDRESSES.remove("www.speedtest.net")
-            conn.execute("DELETE FROM custom_addresses WHERE address = ?", ("www.speedtest.net",))
+            conn.execute(
+                "DELETE FROM custom_addresses WHERE address = ?",
+                ("www.speedtest.net",),
+            )
             conn.commit()
         # Load settings
         cur = conn.execute("SELECT key, value FROM settings")
@@ -775,8 +988,10 @@ def load_db():
     finally:
         conn.close()
 
+
 def hash_password(pw: str) -> str:
     return hashlib.sha256(f"{pw}{CONFIG['secret']}".encode()).hexdigest()
+
 
 AUTH = {"password_hash": hash_password("admin")}
 
@@ -785,18 +1000,24 @@ async def create_session() -> str:
     token = secrets.token_urlsafe(32)
     conn = get_db()
     try:
-        conn.execute("INSERT INTO sessions (token, expires_at) VALUES (?, ?)", (token, time.time() + SESSION_TTL))
+        conn.execute(
+            "INSERT INTO sessions (token, expires_at) VALUES (?, ?)",
+            (token, time.time() + SESSION_TTL),
+        )
         conn.commit()
     finally:
         conn.close()
     return token
+
 
 async def is_valid_session(token: str | None) -> bool:
     if not token:
         return False
     conn = get_db()
     try:
-        cur = conn.execute("SELECT expires_at FROM sessions WHERE token = ?", (token,))
+        cur = conn.execute(
+            "SELECT expires_at FROM sessions WHERE token = ?", (token,)
+        )
         row = cur.fetchone()
         if row is None or row["expires_at"] < time.time():
             conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
@@ -805,6 +1026,7 @@ async def is_valid_session(token: str | None) -> bool:
         return True
     finally:
         conn.close()
+
 
 async def destroy_session(token: str | None):
     if token:
@@ -815,19 +1037,24 @@ async def destroy_session(token: str | None):
         finally:
             conn.close()
 
+
 async def clear_expired_sessions():
     conn = get_db()
     try:
-        conn.execute("DELETE FROM sessions WHERE expires_at < ?", (time.time(),))
+        conn.execute(
+            "DELETE FROM sessions WHERE expires_at < ?", (time.time(),)
+        )
         conn.commit()
     finally:
         conn.close()
+
 
 async def require_auth(request: Request):
     token = request.cookies.get(SESSION_COOKIE)
     if not await is_valid_session(token):
         raise HTTPException(status_code=401, detail="unauthorized")
     return token
+
 
 async def keep_alive():
     global http_client
@@ -841,6 +1068,7 @@ async def keep_alive():
         except Exception:
             pass
 
+
 @app.on_event("startup")
 async def startup():
     global http_client
@@ -849,12 +1077,15 @@ async def startup():
     migrate_legacy_uuids()
     limits = httpx.Limits(max_connections=500, max_keepalive_connections=100)
     timeout = httpx.Timeout(30.0, connect=10.0)
-    http_client = httpx.AsyncClient(limits=limits, timeout=timeout, follow_redirects=True)
+    http_client = httpx.AsyncClient(
+        limits=limits, timeout=timeout, follow_redirects=True
+    )
     asyncio.create_task(keep_alive())
     asyncio.create_task(github_check_loop())
     await restart_telegram_bot()
     asyncio.create_task(telegram_notifier_cron())
     await ensure_default_link()
+
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -863,11 +1094,17 @@ async def shutdown():
     if http_client:
         await http_client.aclose()
 
+
 def get_domain() -> str:
     return (
-        os.environ.get("RENDER_EXTERNAL_URL", os.environ.get("RAILWAY_PUBLIC_DOMAIN", "localhost"))
-        .replace("https://", "").replace("http://", "")
+        os.environ.get(
+            "RENDER_EXTERNAL_URL",
+            os.environ.get("RAILWAY_PUBLIC_DOMAIN", "localhost"),
+        )
+        .replace("https://", "")
+        .replace("http://", "")
     )
+
 
 def generate_vless_link(
     uuid: str,
@@ -893,7 +1130,9 @@ def generate_vless_link(
     protocol = normalize_protocol(protocol)
     auth, transport = split_protocol(protocol)
 
-    fp = (fingerprint or DEFAULT_FINGERPRINT).strip().lower() or DEFAULT_FINGERPRINT
+    fp = (
+        fingerprint or DEFAULT_FINGERPRINT
+    ).strip().lower() or DEFAULT_FINGERPRINT
     if fp not in FINGERPRINTS:
         fp = DEFAULT_FINGERPRINT
 
@@ -906,12 +1145,29 @@ def generate_vless_link(
 
     if transport == "ws":
         path = f"/ws/{auth}/{uuid}?ed=2048"
-        base_params = {"security": "tls", "type": "ws", "host": domain, "path": path, "sni": domain, "fp": fp, "alpn": alpn_val}
+        base_params = {
+            "security": "tls",
+            "type": "ws",
+            "host": domain,
+            "path": path,
+            "sni": domain,
+            "fp": fp,
+            "alpn": alpn_val,
+        }
     else:
         # xhttp-packet-up / xhttp-stream-up
         mode = transport.replace("xhttp-", "")  # packet-up | stream-up
         path = f"/xhttp/{auth}/{mode}/{uuid}"
-        base_params = {"security": "tls", "type": "xhttp", "mode": mode, "host": domain, "path": path, "sni": domain, "fp": fp, "alpn": alpn_val}
+        base_params = {
+            "security": "tls",
+            "type": "xhttp",
+            "mode": mode,
+            "host": domain,
+            "path": path,
+            "sni": domain,
+            "fp": fp,
+            "alpn": alpn_val,
+        }
 
     if auth == "vless":
         params = {"encryption": "none", **base_params}
@@ -922,11 +1178,13 @@ def generate_vless_link(
         params = base_params
         scheme = "trojan"
 
-    query = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
+    query = "&".join(f"{k}={quote(v)}" for k, v in params.items())
     return f"{scheme}://{uuid}@{addr}:{use_port}?{query}#{quote(remark)}"
 
 
-def link_for_variant(link: dict, uid: str, auth: str, address: str = None) -> str | None:
+def link_for_variant(
+    link: dict, uid: str, auth: str, address: str = None
+) -> str | None:
     """اگه variant مربوط به این auth (vless/trojan) روی این لینک فعال باشه، share-link
     مربوطه رو می‌سازه؛ وگرنه None برمی‌گردونه."""
     variant = sanitize_variants(link.get("variants")).get(auth)
@@ -942,7 +1200,10 @@ def link_for_variant(link: dict, uid: str, auth: str, address: str = None) -> st
         alpn=variant.get("alpn"),
     )
 
-def links_for_all_variants(link: dict, uid: str, address: str = None) -> list[str]:
+
+def links_for_all_variants(
+    link: dict, uid: str, address: str = None
+) -> list[str]:
     """برای هر auth فعال روی این لینک، یک share-link می‌سازه (ممکنه ۱ یا ۲ تا خروجی بده)."""
     out = []
     for auth in AUTH_TYPES:
@@ -951,17 +1212,23 @@ def links_for_all_variants(link: dict, uid: str, address: str = None) -> list[st
             out.append(share_link)
     return out
 
+
 def uptime() -> str:
     secs = int(time.time() - stats["start_time"])
     h, m, s = secs // 3600, (secs % 3600) // 60, secs % 60
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+
 def parse_size_to_bytes(value: float, unit: str) -> int:
     unit = unit.upper()
-    if unit == "GB": return int(value * 1024 * 1024 * 1024)
-    if unit == "MB": return int(value * 1024 * 1024)
-    if unit == "KB": return int(value * 1024)
+    if unit == "GB":
+        return int(value * 1024 * 1024 * 1024)
+    if unit == "MB":
+        return int(value * 1024 * 1024)
+    if unit == "KB":
+        return int(value * 1024)
     return int(value)
+
 
 def parse_expires_at(raw: str | None) -> datetime | None:
     if not raw:
@@ -975,12 +1242,14 @@ def parse_expires_at(raw: str | None) -> datetime | None:
     except Exception:
         return None
 
+
 def seconds_until_expiry(expires_at_str: str | None) -> int | None:
     exp = parse_expires_at(expires_at_str)
     if exp is None:
         return None
     remaining = (exp - datetime.now(timezone.utc)).total_seconds()
     return max(0, int(remaining))
+
 
 async def ensure_default_link():
     async with LINKS_LOCK:
@@ -997,6 +1266,7 @@ async def ensure_default_link():
                 "port": DEFAULT_PORT,
             }
 
+
 async def find_uid_by_label(label: str) -> str | None:
     async with LINKS_LOCK:
         for uid, data in LINKS.items():
@@ -1004,7 +1274,11 @@ async def find_uid_by_label(label: str) -> str | None:
                 return uid
     return None
 
-_UUID_RE = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+
+_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
 
 def migrate_legacy_uuids():
     """One-time migration: older versions of this panel used the link's label
@@ -1020,22 +1294,35 @@ def migrate_legacy_uuids():
                 continue
             new_uid = str(uuid.uuid4())
             conn.execute("DELETE FROM links WHERE uuid = ?", (old_uid,))
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT OR REPLACE INTO links (uuid, label, limit_bytes, used_bytes, max_connections, created_at, active, expires_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (new_uid, link["label"], link["limit_bytes"], link["used_bytes"],
-                  link.get("max_connections", 0), link["created_at"],
-                  1 if link.get("active", True) else 0, link.get("expires_at")))
+            """,
+                (
+                    new_uid,
+                    link["label"],
+                    link["limit_bytes"],
+                    link["used_bytes"],
+                    link.get("max_connections", 0),
+                    link["created_at"],
+                    1 if link.get("active", True) else 0,
+                    link.get("expires_at"),
+                ),
+            )
             del LINKS[old_uid]
             LINKS[new_uid] = link
             changed = True
-            logger.info(f"Migrated legacy link '{link['label']}' to a standard UUID.")
+            logger.info(
+                f"Migrated legacy link '{link['label']}' to a standard UUID."
+            )
         if changed:
             conn.commit()
     except Exception as e:
         logger.error(f"Error migrating legacy uuids: {e}")
     finally:
         conn.close()
+
 
 def get_client_ip(websocket: WebSocket) -> str:
     forwarded = websocket.headers.get("x-forwarded-for")
@@ -1045,6 +1332,7 @@ def get_client_ip(websocket: WebSocket) -> str:
         return websocket.client.host
     return "unknown"
 
+
 def get_request_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
@@ -1053,9 +1341,13 @@ def get_request_ip(request: Request) -> str:
         return request.client.host
     return "unknown"
 
+
 async def count_connections_for_link(uid: str) -> int:
     async with connections_lock:
-        return sum(1 for info in connections.values() if info.get("uuid") == uid)
+        return sum(
+            1 for info in connections.values() if info.get("uuid") == uid
+        )
+
 
 async def remove_ip_from_link(uid: str, ip: str):
     async with connections_lock:
@@ -1064,9 +1356,12 @@ async def remove_ip_from_link(uid: str, ip: str):
             if not link_ip_map[uid]:
                 link_ip_map.pop(uid, None)
 
+
 async def close_connections_for_link(uid: str):
     async with connections_lock:
-        to_close = [cid for cid, info in connections.items() if info.get("uuid") == uid]
+        to_close = [
+            cid for cid, info in connections.items() if info.get("uuid") == uid
+        ]
     for cid in to_close:
         ws = connection_sockets.get(cid)
         if ws:
@@ -1080,6 +1375,7 @@ async def close_connections_for_link(uid: str):
     async with connections_lock:
         link_ip_map.pop(uid, None)
 
+
 def _is_admin_chat(chat_id, admin_id) -> bool:
     if str(chat_id) != str(admin_id):
         logger.warning(
@@ -1088,6 +1384,7 @@ def _is_admin_chat(chat_id, admin_id) -> bool:
         )
         return False
     return True
+
 
 async def _stop_telegram_bot():
     global bot, bot_polling_task
@@ -1105,10 +1402,13 @@ async def _stop_telegram_bot():
     bot = None
     bot_polling_task = None
 
+
 async def restart_telegram_bot():
     global bot, bot_polling_task
     if not TELEBOT_AVAILABLE:
-        logger.warning("Telegram Bot is disabled because pyTelegramBotAPI library is not installed.")
+        logger.warning(
+            "Telegram Bot is disabled because pyTelegramBotAPI library is not installed."
+        )
         return
 
     await _stop_telegram_bot()
@@ -1122,75 +1422,92 @@ async def restart_telegram_bot():
     logger.info("Restarting Telegram Bot with official library...")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.get(f"https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=true")
-            me_resp = await client.get(f"https://api.telegram.org/bot{token}/getMe")
+            await client.get(
+                f"https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=true"
+            )
+            me_resp = await client.get(
+                f"https://api.telegram.org/bot{token}/getMe"
+            )
             me_data = me_resp.json()
             if not me_data.get("ok"):
-                logger.error(f"Telegram Bot: token rejected by Telegram ({me_data.get('description')}). Bot NOT started.")
+                logger.error(
+                    f"Telegram Bot: token rejected by Telegram ({me_data.get('description')}). Bot NOT started."
+                )
                 return
-            logger.info(f"Telegram Bot: token verified, connected as @{me_data['result'].get('username')}")
+            logger.info(
+                f"Telegram Bot: token verified, connected as @{me_data['result'].get('username')}"
+            )
     except Exception as e:
-        logger.error(f"Telegram Bot: could not reach Telegram API, bot NOT started: {e}")
+        logger.error(
+            f"Telegram Bot: could not reach Telegram API, bot NOT started: {e}"
+        )
         return
 
     bot = AsyncTeleBot(token)
 
-    @bot.message_handler(commands=['start'])
+    @bot.message_handler(commands=["start"])
     async def cmd_start(message):
         if not _is_admin_chat(message.chat.id, admin_id):
             return
-        await bot.send_message(message.chat.id, L("welcome"), parse_mode="HTML", reply_markup=build_main_keyboard())
+        await bot.send_message(
+            message.chat.id,
+            L("welcome"),
+            parse_mode="HTML",
+            reply_markup=build_main_keyboard(),
+        )
 
-    @bot.message_handler(commands=['stats'])
+    @bot.message_handler(commands=["stats"])
     async def cmd_stats(message):
         if not _is_admin_chat(message.chat.id, admin_id):
             return
         s_data = await get_internal_stats()
-        await bot.send_message(message.chat.id, make_stats_text(s_data), parse_mode="HTML")
+        await bot.send_message(
+            message.chat.id, make_stats_text(s_data), parse_mode="HTML"
+        )
 
-    @bot.message_handler(commands=['users'])
+    @bot.message_handler(commands=["users"])
     async def cmd_users(message):
         if not _is_admin_chat(message.chat.id, admin_id):
             return
         utext = await make_users_text()
         await bot.send_message(message.chat.id, utext, parse_mode="HTML")
 
-    @bot.message_handler(commands=['top'])
+    @bot.message_handler(commands=["top"])
     async def cmd_top(message):
         if not _is_admin_chat(message.chat.id, admin_id):
             return
         utext = await make_top_users_text()
         await bot.send_message(message.chat.id, utext, parse_mode="HTML")
 
-    @bot.message_handler(commands=['create'])
+    @bot.message_handler(commands=["create"])
     async def cmd_create(message):
         if not _is_admin_chat(message.chat.id, admin_id):
             return
         resp = await handle_create_command(message.text)
         await bot.send_message(message.chat.id, resp, parse_mode="HTML")
 
-    @bot.message_handler(commands=['addaddr'])
+    @bot.message_handler(commands=["addaddr"])
     async def cmd_addaddr(message):
         if not _is_admin_chat(message.chat.id, admin_id):
             return
         resp = await handle_addaddr_command(message.text)
         await bot.send_message(message.chat.id, resp, parse_mode="HTML")
 
-    @bot.message_handler(commands=['disable'])
+    @bot.message_handler(commands=["disable"])
     async def cmd_disable(message):
         if not _is_admin_chat(message.chat.id, admin_id):
             return
         resp = await handle_toggle_command(message.text, False)
         await bot.send_message(message.chat.id, resp, parse_mode="HTML")
 
-    @bot.message_handler(commands=['enable'])
+    @bot.message_handler(commands=["enable"])
     async def cmd_enable(message):
         if not _is_admin_chat(message.chat.id, admin_id):
             return
         resp = await handle_toggle_command(message.text, True)
         await bot.send_message(message.chat.id, resp, parse_mode="HTML")
 
-    @bot.message_handler(commands=['reset'])
+    @bot.message_handler(commands=["reset"])
     async def cmd_reset(message):
         if not _is_admin_chat(message.chat.id, admin_id):
             return
@@ -1206,29 +1523,62 @@ async def restart_telegram_bot():
         if call.data == "tg_lang_toggle":
             CONFIG["bot_lang"] = "fa" if bot_lang() == "en" else "en"
             await save_db()
-            await bot.send_message(call.message.chat.id, L("lang_switched"), parse_mode="HTML", reply_markup=build_main_keyboard())
+            await bot.send_message(
+                call.message.chat.id,
+                L("lang_switched"),
+                parse_mode="HTML",
+                reply_markup=build_main_keyboard(),
+            )
         elif call.data == "tg_stats":
             s_data = await get_internal_stats()
-            await bot.send_message(call.message.chat.id, make_stats_text(s_data), parse_mode="HTML", reply_markup=build_main_keyboard())
+            await bot.send_message(
+                call.message.chat.id,
+                make_stats_text(s_data),
+                parse_mode="HTML",
+                reply_markup=build_main_keyboard(),
+            )
         elif call.data == "tg_users":
             utext = await make_users_text()
-            await bot.send_message(call.message.chat.id, utext, parse_mode="HTML", reply_markup=build_main_keyboard())
+            await bot.send_message(
+                call.message.chat.id,
+                utext,
+                parse_mode="HTML",
+                reply_markup=build_main_keyboard(),
+            )
         elif call.data == "tg_top":
             utext = await make_top_users_text()
-            await bot.send_message(call.message.chat.id, utext, parse_mode="HTML", reply_markup=build_main_keyboard())
+            await bot.send_message(
+                call.message.chat.id,
+                utext,
+                parse_mode="HTML",
+                reply_markup=build_main_keyboard(),
+            )
         elif call.data == "tg_create_guide":
-            await bot.send_message(call.message.chat.id, L("create_guide"), parse_mode="HTML", reply_markup=build_main_keyboard())
+            await bot.send_message(
+                call.message.chat.id,
+                L("create_guide"),
+                parse_mode="HTML",
+                reply_markup=build_main_keyboard(),
+            )
         elif call.data == "tg_add_ip_guide":
-            await bot.send_message(call.message.chat.id, L("addip_guide"), parse_mode="HTML", reply_markup=build_main_keyboard())
+            await bot.send_message(
+                call.message.chat.id,
+                L("addip_guide"),
+                parse_mode="HTML",
+                reply_markup=build_main_keyboard(),
+            )
 
     async def _run_polling(bot_instance):
         try:
             await bot_instance.infinity_polling()
         except Exception as e:
-            logger.error(f"Telegram Bot: polling loop stopped unexpectedly: {e}")
+            logger.error(
+                f"Telegram Bot: polling loop stopped unexpectedly: {e}"
+            )
 
     bot_polling_task = asyncio.create_task(_run_polling(bot))
     logger.info("Telegram Bot is now polling for updates.")
+
 
 async def send_tg_message(text: str):
     global bot
@@ -1239,10 +1589,14 @@ async def send_tg_message(text: str):
         except Exception as e:
             logger.error(f"Error sending TG notification: {e}")
 
+
 def _notify_connections_enabled() -> bool:
     return str(CONFIG.get("notify_connections", "0")) in ("1", "true", "True")
 
-async def _log_connection_event(event: str, label: str, uid: str, ip: str, extra: str = ""):
+
+async def _log_connection_event(
+    event: str, label: str, uid: str, ip: str, extra: str = ""
+):
     """Logs every client connect/disconnect and, if enabled in Settings,
     forwards the same event to the admin via Telegram."""
     verb = "Connected" if event == "connect" else "Disconnected"
@@ -1255,6 +1609,7 @@ async def _log_connection_event(event: str, label: str, uid: str, ip: str, extra
         if extra:
             msg += f"\n{html.escape(extra)}"
         await send_tg_message(msg)
+
 
 def fmt_exp_py(ea: str | None) -> str:
     if not ea:
@@ -1275,6 +1630,7 @@ def fmt_exp_py(ea: str | None) -> str:
     minutes = int(seconds // 60)
     return f"{minutes}m"
 
+
 async def get_internal_stats():
     async with connections_lock:
         conn_count = len(connections)
@@ -1290,6 +1646,7 @@ async def get_internal_stats():
         "memory_percent": psutil.virtual_memory().percent,
     }
 
+
 def make_stats_text(s_data) -> str:
     return L(
         "stats",
@@ -1302,6 +1659,7 @@ def make_stats_text(s_data) -> str:
         links=s_data.get("links_count", 0),
     )
 
+
 async def make_users_text() -> str:
     lines = [L("users_title")]
     async with LINKS_LOCK:
@@ -1312,12 +1670,24 @@ async def make_users_text() -> str:
 
     for uid, data in items:
         used = _fmt_bytes(data["used_bytes"])
-        limit = _fmt_bytes(data["limit_bytes"]) if data["limit_bytes"] > 0 else "∞"
+        limit = (
+            _fmt_bytes(data["limit_bytes"]) if data["limit_bytes"] > 0 else "∞"
+        )
         ex = fmt_exp_py(data.get("expires_at"))
         status = L("status_on") if data["active"] else L("status_off")
-        lines.append(L("users_line", label=data['label'], used=used, limit=limit, exp=ex, status=status))
+        lines.append(
+            L(
+                "users_line",
+                label=data["label"],
+                used=used,
+                limit=limit,
+                exp=ex,
+                status=status,
+            )
+        )
 
     return "\n".join(lines[:35])
+
 
 async def make_top_users_text() -> str:
     lines = [L("top_title")]
@@ -1326,19 +1696,26 @@ async def make_top_users_text() -> str:
     if not items:
         return L("no_inbounds")
 
-    sorted_items = sorted(items, key=lambda x: x[1].get("used_bytes", 0), reverse=True)[:5]
+    sorted_items = sorted(
+        items, key=lambda x: x[1].get("used_bytes", 0), reverse=True
+    )[:5]
     for i, (uid, data) in enumerate(sorted_items, 1):
         used = _fmt_bytes(data["used_bytes"])
-        limit = _fmt_bytes(data["limit_bytes"]) if data["limit_bytes"] > 0 else "∞"
-        lines.append(L("top_line", i=i, label=data['label'], used=used, limit=limit))
+        limit = (
+            _fmt_bytes(data["limit_bytes"]) if data["limit_bytes"] > 0 else "∞"
+        )
+        lines.append(
+            L("top_line", i=i, label=data["label"], used=used, limit=limit)
+        )
     return "\n".join(lines)
+
 
 async def handle_create_command(text: str):
     parts = text.split()
     if len(parts) < 2:
         return L("create_format")
     label = parts[1]
-    if not re.match(r'^[a-zA-Z0-9\-_. ]+$', label):
+    if not re.match(r"^[a-zA-Z0-9\-_. ]+$", label):
         return L("create_bad_name")
 
     limit_value = 0.0
@@ -1360,10 +1737,14 @@ async def handle_create_command(text: str):
         if any(v["label"] == label for v in LINKS.values()):
             return L("create_exists", label=label)
 
-    limit_bytes = 0 if limit_value <= 0 else parse_size_to_bytes(limit_value, "GB")
+    limit_bytes = (
+        0 if limit_value <= 0 else parse_size_to_bytes(limit_value, "GB")
+    )
     expires_at = None
     if days_valid > 0:
-        expires_at = (datetime.now(timezone.utc) + timedelta(days=days_valid)).isoformat()
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(days=days_valid)
+        ).isoformat()
 
     uid = str(uuid.uuid4())
     async with LINKS_LOCK:
@@ -1384,20 +1765,26 @@ async def handle_create_command(text: str):
     sub_url = f"https://{get_domain()}/sub/{uid}"
 
     quota_str = _fmt_bytes(limit_bytes) if limit_bytes > 0 else L("unlimited")
-    expiry_str = L("days_fmt", days=days_valid) if days_valid > 0 else L("unlimited")
+    expiry_str = (
+        L("days_fmt", days=days_valid) if days_valid > 0 else L("unlimited")
+    )
 
     return L(
         "create_success",
-        label=label, quota=quota_str, expiry=expiry_str,
-        vless=vless_link, sub=sub_url,
+        label=label,
+        quota=quota_str,
+        expiry=expiry_str,
+        vless=vless_link,
+        sub=sub_url,
     )
+
 
 async def handle_addaddr_command(text: str) -> str:
     parts = text.split()
     if len(parts) < 2:
         return L("addaddr_format")
     addr = parts[1].strip()
-    if not re.match(r'^[a-zA-Z0-9\-_. ]+$', addr):
+    if not re.match(r"^[a-zA-Z0-9\-_. ]+$", addr):
         return L("addaddr_invalid")
     async with CUSTOM_ADDRESSES_LOCK:
         if addr in CUSTOM_ADDRESSES:
@@ -1405,6 +1792,7 @@ async def handle_addaddr_command(text: str) -> str:
         CUSTOM_ADDRESSES.append(addr)
     await save_db()
     return L("addaddr_success", addr=addr)
+
 
 async def handle_toggle_command(text: str, active_state: bool) -> str:
     parts = text.split()
@@ -1421,6 +1809,7 @@ async def handle_toggle_command(text: str, active_state: bool) -> str:
     state_str = L("state_enabled") if active_state else L("state_disabled")
     return L("toggle_success", name=name, state=state_str)
 
+
 async def handle_reset_command(text: str) -> str:
     parts = text.split()
     if len(parts) < 2:
@@ -1435,6 +1824,7 @@ async def handle_reset_command(text: str) -> str:
     await save_db()
     return L("reset_success", name=name)
 
+
 async def telegram_notifier_cron():
     while True:
         try:
@@ -1446,19 +1836,24 @@ async def telegram_notifier_cron():
 
             async with LINKS_LOCK:
                 items = list(LINKS.items())
-            
+
             for uid, data in items:
                 if not data["active"]:
                     continue
-                
+
                 used = data["used_bytes"]
                 limit = data["limit_bytes"]
                 label = data["label"]
-                
+
                 if limit > 0 and used >= limit:
                     notif_key = f"quota_{uid}"
                     if notif_key not in notified_uids:
-                        msg = L("quota_alert", label=label, used=_fmt_bytes(used), limit=_fmt_bytes(limit))
+                        msg = L(
+                            "quota_alert",
+                            label=label,
+                            used=_fmt_bytes(used),
+                            limit=_fmt_bytes(limit),
+                        )
                         await send_tg_message(msg)
                         notified_uids.add(notif_key)
                         await create_notification(
@@ -1466,14 +1861,16 @@ async def telegram_notifier_cron():
                             title=f"Quota exceeded: {label}",
                             message=f"{label} used {_fmt_bytes(used)} of {_fmt_bytes(limit)}",
                         )
-                
+
                 expires_at_str = data.get("expires_at")
                 if expires_at_str:
                     exp = parse_expires_at(expires_at_str)
                     if exp and exp < datetime.now(timezone.utc):
                         notif_key = f"expiry_{uid}"
                         if notif_key not in notified_uids:
-                            msg = L("expiry_alert", label=label, exp=expires_at_str)
+                            msg = L(
+                                "expiry_alert", label=label, exp=expires_at_str
+                            )
                             await send_tg_message(msg)
                             notified_uids.add(notif_key)
                             await create_notification(
@@ -1481,21 +1878,24 @@ async def telegram_notifier_cron():
                                 title=f"Expired: {label}",
                                 message=f"{label} has expired on {expires_at_str}",
                             )
-                            
+
         except Exception as e:
             logger.error(f"Error in notification cron: {e}")
-            
+
         await asyncio.sleep(60)
+
 
 @app.get("/")
 async def root():
     return Response(content="OK", media_type="text/plain")
+
 
 @app.get("/health")
 async def health():
     async with connections_lock:
         conn_count = len(connections)
     return {"status": "ok", "connections": conn_count, "uptime": uptime()}
+
 
 @app.get("/api/ping-check")
 async def ping_check(host: str, port: int = 443):
@@ -1506,7 +1906,9 @@ async def ping_check(host: str, port: int = 443):
         return {"host": host, "port": port, "ms": None, "reachable": False}
     start = time.time()
     try:
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=5.0)
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host, port), timeout=5.0
+        )
         ms = round((time.time() - start) * 1000)
         writer.close()
         try:
@@ -1517,19 +1919,32 @@ async def ping_check(host: str, port: int = 443):
     except Exception:
         return {"host": host, "port": port, "ms": None, "reachable": False}
 
+
 @app.post("/api/login")
 async def api_login(request: Request):
     body = await request.json()
     password = str(body.get("password") or "")
     ip = get_request_ip(request)
     if hash_password(password) != AUTH["password_hash"]:
-        await send_tg_message(f"⚠️ <b>تلاش ناموفق برای ورود به پنل</b>\nIP: <code>{html.escape(ip)}</code>")
+        await send_tg_message(
+            f"⚠️ <b>تلاش ناموفق برای ورود به پنل</b>\nIP: <code>{html.escape(ip)}</code>"
+        )
         raise HTTPException(status_code=401, detail="Invalid password")
     token = await create_session()
     resp = JSONResponse({"ok": True})
-    resp.set_cookie(key=SESSION_COOKIE, value=token, max_age=SESSION_TTL, httponly=True, samesite="lax", path="/")
-    await send_tg_message(f"🟢 <b>ورود ادمین به پنل</b>\nIP: <code>{html.escape(ip)}</code>")
+    resp.set_cookie(
+        key=SESSION_COOKIE,
+        value=token,
+        max_age=SESSION_TTL,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    await send_tg_message(
+        f"🟢 <b>ورود ادمین به پنل</b>\nIP: <code>{html.escape(ip)}</code>"
+    )
     return resp
+
 
 @app.post("/api/logout")
 async def api_logout(request: Request):
@@ -1537,13 +1952,17 @@ async def api_logout(request: Request):
     await destroy_session(token)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(SESSION_COOKIE, path="/")
-    await send_tg_message(f"🔴 <b>خروج ادمین از پنل</b>\nIP: <code>{html.escape(get_request_ip(request))}</code>")
+    await send_tg_message(
+        f"🔴 <b>خروج ادمین از پنل</b>\nIP: <code>{html.escape(get_request_ip(request))}</code>"
+    )
     return resp
+
 
 @app.get("/api/me")
 async def api_me(request: Request):
     token = request.cookies.get(SESSION_COOKIE)
     return {"authenticated": await is_valid_session(token)}
+
 
 @app.get("/api/version")
 async def api_version():
@@ -1555,8 +1974,10 @@ async def api_version():
         "version": PANEL_VERSION,
         "latest_github_version": latest,
         "update_available": update_available,
-        "github_url": gh.get("url") or f"https://github.com/{GITHUB_REPO}/releases",
+        "github_url": gh.get("url")
+        or f"https://github.com/{GITHUB_REPO}/releases",
     }
+
 
 @app.post("/api/change-password")
 async def api_change_password(request: Request, _=Depends(require_auth)):
@@ -1564,9 +1985,13 @@ async def api_change_password(request: Request, _=Depends(require_auth)):
     current = str(body.get("current_password") or "")
     new = str(body.get("new_password") or "")
     if hash_password(current) != AUTH["password_hash"]:
-        raise HTTPException(status_code=400, detail="Current password is incorrect")
+        raise HTTPException(
+            status_code=400, detail="Current password is incorrect"
+        )
     if len(new) < 4:
-        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 4 characters"
+        )
     AUTH["password_hash"] = hash_password(new)
     await save_db()
     current_token = request.cookies.get(SESSION_COOKIE)
@@ -1574,11 +1999,15 @@ async def api_change_password(request: Request, _=Depends(require_auth)):
     try:
         conn.execute("DELETE FROM sessions")
         if current_token:
-            conn.execute("INSERT INTO sessions (token, expires_at) VALUES (?, ?)", (current_token, time.time() + SESSION_TTL))
+            conn.execute(
+                "INSERT INTO sessions (token, expires_at) VALUES (?, ?)",
+                (current_token, time.time() + SESSION_TTL),
+            )
         conn.commit()
     finally:
         conn.close()
     return {"ok": True}
+
 
 @app.get("/api/settings")
 async def get_settings(_=Depends(require_auth)):
@@ -1586,8 +2015,10 @@ async def get_settings(_=Depends(require_auth)):
         "telegram_token": CONFIG["telegram_token"],
         "telegram_admin_id": CONFIG["telegram_admin_id"],
         "railway_token": CONFIG.get("railway_token", ""),
-        "notify_connections": CONFIG.get("notify_connections", "0") in ("1", "true", "True", True),
+        "notify_connections": CONFIG.get("notify_connections", "0")
+        in ("1", "true", "True", True),
     }
+
 
 @app.post("/api/settings")
 async def update_settings(request: Request, _=Depends(require_auth)):
@@ -1598,20 +2029,28 @@ async def update_settings(request: Request, _=Depends(require_auth)):
     if "telegram_token" in body:
         CONFIG["telegram_token"] = (body.get("telegram_token") or "").strip()
     if "telegram_admin_id" in body:
-        CONFIG["telegram_admin_id"] = (body.get("telegram_admin_id") or "").strip()
+        CONFIG["telegram_admin_id"] = (
+            body.get("telegram_admin_id") or ""
+        ).strip()
     if "railway_token" in body:
         CONFIG["railway_token"] = (body.get("railway_token") or "").strip()
     if "notify_connections" in body:
-        CONFIG["notify_connections"] = "1" if body.get("notify_connections") else "0"
+        CONFIG["notify_connections"] = (
+            "1" if body.get("notify_connections") else "0"
+        )
     await save_db()
     await restart_telegram_bot()
     return {"ok": True}
+
 
 # ── Railway / Permanent Database ──────────────────────────────────────────
 
 RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2"
 
-async def _railway_graphql(token: str, query: str, variables: dict = None) -> dict:
+
+async def _railway_graphql(
+    token: str, query: str, variables: dict = None
+) -> dict:
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -1622,11 +2061,17 @@ async def _railway_graphql(token: str, query: str, variables: dict = None) -> di
     async with httpx.AsyncClient(timeout=15.0) as client:
         r = await client.post(RAILWAY_API_URL, json=body, headers=headers)
         if r.status_code != 200:
-            raise HTTPException(status_code=502, detail=f"Railway API error: {r.status_code}")
+            raise HTTPException(
+                status_code=502, detail=f"Railway API error: {r.status_code}"
+            )
         data = r.json()
         if "errors" in data:
-            raise HTTPException(status_code=502, detail=data["errors"][0].get("message", "Railway API error"))
+            raise HTTPException(
+                status_code=502,
+                detail=data["errors"][0].get("message", "Railway API error"),
+            )
         return data.get("data", {})
+
 
 @app.post("/api/railway/projects")
 async def railway_list_projects(request: Request, _=Depends(require_auth)):
@@ -1639,27 +2084,35 @@ async def railway_list_projects(request: Request, _=Depends(require_auth)):
     seen_ids = set()
 
     # Personal-account-scoped projects (not inside any workspace)
-    personal_data = await _railway_graphql(token, """
+    personal_data = await _railway_graphql(
+        token,
+        """
         query {
             projects {
                 edges { node { id name } }
             }
         }
-    """)
+    """,
+    )
     for edge in personal_data.get("projects", {}).get("edges", []):
         node = edge.get("node", {})
         if node.get("id") and node["id"] not in seen_ids:
             seen_ids.add(node["id"])
-            projects.append({"id": node["id"], "name": node.get("name", "Unnamed")})
+            projects.append(
+                {"id": node["id"], "name": node.get("name", "Unnamed")}
+            )
 
     # Most Railway accounts now keep their projects inside a workspace, so we
     # also need to enumerate workspaces and fetch each one's projects.
     try:
-        ws_data = await _railway_graphql(token, """
+        ws_data = await _railway_graphql(
+            token,
+            """
             query {
                 me { workspaces { id name } }
             }
-        """)
+        """,
+        )
         workspaces = (ws_data.get("me") or {}).get("workspaces") or []
     except HTTPException:
         # A workspace- or project-scoped token can't call `me`; that's fine,
@@ -1671,22 +2124,29 @@ async def railway_list_projects(request: Request, _=Depends(require_auth)):
         if not ws_id:
             continue
         try:
-            ws_projects = await _railway_graphql(token, """
+            ws_projects = await _railway_graphql(
+                token,
+                """
                 query ($workspaceId: String!) {
                     projects(workspaceId: $workspaceId) {
                         edges { node { id name } }
                     }
                 }
-            """, {"workspaceId": ws_id})
+            """,
+                {"workspaceId": ws_id},
+            )
         except HTTPException:
             continue
         for edge in ws_projects.get("projects", {}).get("edges", []):
             node = edge.get("node", {})
             if node.get("id") and node["id"] not in seen_ids:
                 seen_ids.add(node["id"])
-                projects.append({"id": node["id"], "name": node.get("name", "Unnamed")})
+                projects.append(
+                    {"id": node["id"], "name": node.get("name", "Unnamed")}
+                )
 
     return {"projects": projects}
+
 
 async def _railway_resolve_service(token: str, project_id: str) -> dict:
     """Figures out which service in the project the volume should attach to.
@@ -1699,16 +2159,27 @@ async def _railway_resolve_service(token: str, project_id: str) -> dict:
     "only one service in the project" when it's not available or doesn't
     belong to this project.
     """
-    data = await _railway_graphql(token, """
+    data = await _railway_graphql(
+        token,
+        """
         query ($id: String!) {
             project(id: $id) {
                 services { edges { node { id name } } }
             }
         }
-    """, {"id": project_id})
-    services = [e["node"] for e in ((data.get("project") or {}).get("services") or {}).get("edges", [])]
+    """,
+        {"id": project_id},
+    )
+    services = [
+        e["node"]
+        for e in ((data.get("project") or {}).get("services") or {}).get(
+            "edges", []
+        )
+    ]
     if not services:
-        raise HTTPException(status_code=400, detail="No services found in this project.")
+        raise HTTPException(
+            status_code=400, detail="No services found in this project."
+        )
     own_service_id = os.environ.get("RAILWAY_SERVICE_ID", "").strip()
     if own_service_id:
         match = next((s for s in services if s["id"] == own_service_id), None)
@@ -1721,15 +2192,20 @@ async def _railway_resolve_service(token: str, project_id: str) -> dict:
         detail="Multiple services found in this project and the panel's own service couldn't be identified automatically. Make sure you're running this panel as a Railway service inside the selected project.",
     )
 
+
 @app.post("/api/railway/volume-status")
 async def railway_volume_status(request: Request, _=Depends(require_auth)):
     body = await request.json()
     token = body.get("token", "").strip()
     project_id = body.get("project_id", "").strip()
     if not token or not project_id:
-        raise HTTPException(status_code=400, detail="Token and project_id are required")
+        raise HTTPException(
+            status_code=400, detail="Token and project_id are required"
+        )
     service = await _railway_resolve_service(token, project_id)
-    data = await _railway_graphql(token, """
+    data = await _railway_graphql(
+        token,
+        """
         query ($id: String!) {
             project(id: $id) {
                 volumes {
@@ -1745,21 +2221,34 @@ async def railway_volume_status(request: Request, _=Depends(require_auth)):
                 }
             }
         }
-    """, {"id": project_id})
+    """,
+        {"id": project_id},
+    )
     volumes = []
-    for edge in ((data.get("project") or {}).get("volumes") or {}).get("edges", []):
+    for edge in ((data.get("project") or {}).get("volumes") or {}).get(
+        "edges", []
+    ):
         node = edge["node"]
         for vi_edge in (node.get("volumeInstances") or {}).get("edges", []):
             vi = vi_edge["node"]
             if vi.get("serviceId") == service["id"]:
-                volumes.append({
-                    "id": node["id"],
-                    "name": node.get("name", ""),
-                    "path": vi.get("mountPath", ""),
-                    "state": vi.get("state", ""),
-                })
-    has_data_volume = any(v["path"] in ("data", "/data") for v in volumes) or bool(volumes)
-    return {"volumes": volumes, "has_data_volume": has_data_volume, "service_name": service.get("name", "")}
+                volumes.append(
+                    {
+                        "id": node["id"],
+                        "name": node.get("name", ""),
+                        "path": vi.get("mountPath", ""),
+                        "state": vi.get("state", ""),
+                    }
+                )
+    has_data_volume = any(
+        v["path"] in ("data", "/data") for v in volumes
+    ) or bool(volumes)
+    return {
+        "volumes": volumes,
+        "has_data_volume": has_data_volume,
+        "service_name": service.get("name", ""),
+    }
+
 
 @app.post("/api/railway/create-volume")
 async def railway_create_volume(request: Request, _=Depends(require_auth)):
@@ -1767,17 +2256,27 @@ async def railway_create_volume(request: Request, _=Depends(require_auth)):
     token = body.get("token", "").strip()
     project_id = body.get("project_id", "").strip()
     if not token or not project_id:
-        raise HTTPException(status_code=400, detail="Token and project_id are required")
+        raise HTTPException(
+            status_code=400, detail="Token and project_id are required"
+        )
     service = await _railway_resolve_service(token, project_id)
-    volume_input = {"projectId": project_id, "serviceId": service["id"], "mountPath": "/data"}
+    volume_input = {
+        "projectId": project_id,
+        "serviceId": service["id"],
+        "mountPath": "/data",
+    }
     env_id = os.environ.get("RAILWAY_ENVIRONMENT_ID", "").strip()
     if env_id:
         volume_input["environmentId"] = env_id
-    data = await _railway_graphql(token, """
+    data = await _railway_graphql(
+        token,
+        """
         mutation ($input: VolumeCreateInput!) {
             volumeCreate(input: $input) { id name }
         }
-    """, {"input": volume_input})
+    """,
+        {"input": volume_input},
+    )
     vol = data.get("volumeCreate") or {}
     if not vol.get("id"):
         raise HTTPException(status_code=502, detail="Failed to create volume")
@@ -1787,6 +2286,7 @@ async def railway_create_volume(request: Request, _=Depends(require_auth)):
         "path": "/data",
         "state": "creating",
     }
+
 
 @app.get("/stats")
 async def get_stats(_=Depends(require_auth)):
@@ -1807,20 +2307,29 @@ async def get_stats(_=Depends(require_auth)):
         "hourly_traffic": dict(hourly_traffic),
     }
 
+
 @app.post("/api/links")
 async def create_link(request: Request, _=Depends(require_auth)):
     body = await request.json()
     label = (body.get("label") or "New Link").strip()[:60]
-    if not re.match(r'^[a-zA-Z0-9\-_. ]+$', label):
-        raise HTTPException(status_code=400, detail="Inbound name must contain only English letters, numbers, and characters: - _ . space")
+    if not re.match(r"^[a-zA-Z0-9\-_. ]+$", label):
+        raise HTTPException(
+            status_code=400,
+            detail="Inbound name must contain only English letters, numbers, and characters: - _ . space",
+        )
     if not label:
         raise HTTPException(status_code=400, detail="Inbound name is required")
     async with LINKS_LOCK:
         if any(v["label"] == label for v in LINKS.values()):
-            raise HTTPException(status_code=400, detail="An inbound with this name already exists")
+            raise HTTPException(
+                status_code=400,
+                detail="An inbound with this name already exists",
+            )
     limit_value = float(body.get("limit_value") or 0)
     limit_unit = body.get("limit_unit") or "GB"
-    limit_bytes = 0 if limit_value <= 0 else parse_size_to_bytes(limit_value, limit_unit)
+    limit_bytes = (
+        0 if limit_value <= 0 else parse_size_to_bytes(limit_value, limit_unit)
+    )
     max_conn = int(body.get("max_connections") or 0)
     if max_conn < 0:
         max_conn = 0
@@ -1830,7 +2339,9 @@ async def create_link(request: Request, _=Depends(require_auth)):
         try:
             days_valid = int(days_valid)
             if days_valid > 0:
-                expires_at = (datetime.now(timezone.utc) + timedelta(days=days_valid)).isoformat()
+                expires_at = (
+                    datetime.now(timezone.utc) + timedelta(days=days_valid)
+                ).isoformat()
         except (ValueError, TypeError):
             pass
 
@@ -1853,12 +2364,19 @@ async def create_link(request: Request, _=Depends(require_auth)):
         }
     await save_db()
     return {
-        "uuid": uid, "label": label, "limit_bytes": limit_bytes, "used_bytes": 0,
-        "max_connections": max_conn, "active": True, "created_at": LINKS[uid]["created_at"],
+        "uuid": uid,
+        "label": label,
+        "limit_bytes": limit_bytes,
+        "used_bytes": 0,
+        "max_connections": max_conn,
+        "active": True,
+        "created_at": LINKS[uid]["created_at"],
         "expires_at": expires_at,
-        "variants": variants, "port": port,
+        "variants": variants,
+        "port": port,
         "vless_links": links_for_all_variants(LINKS[uid], uid),
     }
+
 
 @app.get("/api/links")
 async def list_links(_=Depends(require_auth)):
@@ -1866,22 +2384,25 @@ async def list_links(_=Depends(require_auth)):
     async with LINKS_LOCK:
         items = list(LINKS.items())
     for uid, data in items:
-        result.append({
-            "uuid": uid,
-            "label": data["label"],
-            "limit_bytes": data["limit_bytes"],
-            "used_bytes": data["used_bytes"],
-            "max_connections": data.get("max_connections", 0),
-            "active": data["active"],
-            "created_at": data["created_at"],
-            "expires_at": data.get("expires_at"),
-            "variants": sanitize_variants(data.get("variants")),
-            "port": data.get("port", DEFAULT_PORT),
-            "current_connections": await count_connections_for_link(uid),
-            "vless_links": links_for_all_variants(data, uid),
-        })
+        result.append(
+            {
+                "uuid": uid,
+                "label": data["label"],
+                "limit_bytes": data["limit_bytes"],
+                "used_bytes": data["used_bytes"],
+                "max_connections": data.get("max_connections", 0),
+                "active": data["active"],
+                "created_at": data["created_at"],
+                "expires_at": data.get("expires_at"),
+                "variants": sanitize_variants(data.get("variants")),
+                "port": data.get("port", DEFAULT_PORT),
+                "current_connections": await count_connections_for_link(uid),
+                "vless_links": links_for_all_variants(data, uid),
+            }
+        )
     result.sort(key=lambda x: x["created_at"], reverse=True)
     return {"links": result}
+
 
 @app.patch("/api/links/{uid}")
 async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
@@ -1894,7 +2415,11 @@ async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
         if "limit_value" in body:
             limit_value = float(body.get("limit_value") or 0)
             limit_unit = body.get("limit_unit") or "GB"
-            LINKS[uid]["limit_bytes"] = 0 if limit_value <= 0 else parse_size_to_bytes(limit_value, limit_unit)
+            LINKS[uid]["limit_bytes"] = (
+                0
+                if limit_value <= 0
+                else parse_size_to_bytes(limit_value, limit_unit)
+            )
             notified_uids.discard(f"quota_{uid}")
         if "reset_usage" in body and body["reset_usage"]:
             LINKS[uid]["used_bytes"] = 0
@@ -1904,17 +2429,29 @@ async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
         if "max_connections" in body:
             mc = int(body["max_connections"] or 0)
             LINKS[uid]["max_connections"] = mc if mc >= 0 else 0
-        variant_keys = ("vless_enabled", "vless_transport", "vless_fingerprint", "vless_alpn",
-                        "trojan_enabled", "trojan_transport", "trojan_fingerprint", "trojan_alpn")
+        variant_keys = (
+            "vless_enabled",
+            "vless_transport",
+            "vless_fingerprint",
+            "vless_alpn",
+            "trojan_enabled",
+            "trojan_transport",
+            "trojan_fingerprint",
+            "trojan_alpn",
+        )
         if any(k in body for k in variant_keys):
-            LINKS[uid]["variants"] = variants_from_body(body, base=sanitize_variants(LINKS[uid].get("variants")))
+            LINKS[uid]["variants"] = variants_from_body(
+                body, base=sanitize_variants(LINKS[uid].get("variants"))
+            )
         # پورت همیشه 443 است — دیگه از ورودی کاربر خونده نمی‌شه
         LINKS[uid]["port"] = DEFAULT_PORT
         if "days_valid" in body:
             try:
                 dv = int(body["days_valid"])
                 if dv > 0:
-                    LINKS[uid]["expires_at"] = (datetime.now(timezone.utc) + timedelta(days=dv)).isoformat()
+                    LINKS[uid]["expires_at"] = (
+                        datetime.now(timezone.utc) + timedelta(days=dv)
+                    ).isoformat()
                 else:
                     LINKS[uid]["expires_at"] = None
                 notified_uids.discard(f"expiry_{uid}")
@@ -1922,6 +2459,7 @@ async def toggle_link(uid: str, request: Request, _=Depends(require_auth)):
                 pass
     await save_db()
     return {"ok": True}
+
 
 @app.delete("/api/links/{uid}")
 async def delete_link(uid: str, _=Depends(require_auth)):
@@ -1931,10 +2469,12 @@ async def delete_link(uid: str, _=Depends(require_auth)):
     await close_connections_for_link(uid)
     return {"ok": True}
 
+
 @app.get("/api/addresses")
 async def list_addresses(_=Depends(require_auth)):
     async with CUSTOM_ADDRESSES_LOCK:
         return {"addresses": list(CUSTOM_ADDRESSES)}
+
 
 @app.post("/api/addresses")
 async def add_address(request: Request, _=Depends(require_auth)):
@@ -1942,14 +2482,20 @@ async def add_address(request: Request, _=Depends(require_auth)):
     address = (body.get("address") or "").strip()
     if not address:
         raise HTTPException(status_code=400, detail="Address is required")
-    if not re.match(r'^[a-zA-Z0-9\-_. ]+$', address):
-        raise HTTPException(status_code=400, detail="Address must contain only English letters, numbers, and characters: - _ .")
+    if not re.match(r"^[a-zA-Z0-9\-_. ]+$", address):
+        raise HTTPException(
+            status_code=400,
+            detail="Address must contain only English letters, numbers, and characters: - _ .",
+        )
     async with CUSTOM_ADDRESSES_LOCK:
         if address in CUSTOM_ADDRESSES:
-            raise HTTPException(status_code=400, detail="Address already exists")
+            raise HTTPException(
+                status_code=400, detail="Address already exists"
+            )
         CUSTOM_ADDRESSES.append(address)
     await save_db()
     return {"ok": True, "addresses": list(CUSTOM_ADDRESSES)}
+
 
 @app.delete("/api/addresses")
 async def delete_all_addresses(_=Depends(require_auth)):
@@ -1957,6 +2503,7 @@ async def delete_all_addresses(_=Depends(require_auth)):
         CUSTOM_ADDRESSES.clear()
     await save_db()
     return {"ok": True, "addresses": list(CUSTOM_ADDRESSES)}
+
 
 @app.delete("/api/addresses/{index}")
 async def delete_address(index: int, _=Depends(require_auth)):
@@ -1968,11 +2515,13 @@ async def delete_address(index: int, _=Depends(require_auth)):
     await save_db()
     return {"ok": True, "addresses": list(CUSTOM_ADDRESSES)}
 
+
 # فایل‌های آماده‌ی IP که کنار main.py قرار می‌گیرن و با یک کلیک، همه‌شون یکجا
 # (بدون رفت‌وبرگشت جدا برای هر آی‌پی) به لیست Clean IP اضافه می‌شن.
 IP_IMPORT_FILES = {
     "railway": "railway_ips.txt",
 }
+
 
 def _parse_ip_file(path: str) -> list[str]:
     if not os.path.isfile(path):
@@ -1983,9 +2532,10 @@ def _parse_ip_file(path: str) -> list[str]:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            if re.match(r'^[a-zA-Z0-9\-_.:/ ]+$', line):
+            if re.match(r"^[a-zA-Z0-9\-_.:/ ]+$", line):
                 out.append(line)
     return out
+
 
 @app.post("/api/addresses/import/{source}")
 async def import_addresses(source: str, _=Depends(require_auth)):
@@ -1994,10 +2544,15 @@ async def import_addresses(source: str, _=Depends(require_auth)):
     filename = IP_IMPORT_FILES.get(source)
     if not filename:
         raise HTTPException(status_code=404, detail="unknown import source")
-    file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+    file_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), filename
+    )
     ips = _parse_ip_file(file_path)
     if not ips:
-        raise HTTPException(status_code=404, detail=f"{filename} not found or empty next to main.py")
+        raise HTTPException(
+            status_code=404,
+            detail=f"{filename} not found or empty next to main.py",
+        )
     added = 0
     async with CUSTOM_ADDRESSES_LOCK:
         existing = set(CUSTOM_ADDRESSES)
@@ -2007,17 +2562,26 @@ async def import_addresses(source: str, _=Depends(require_auth)):
                 existing.add(ip)
                 added += 1
     await save_db()
-    return {"ok": True, "added": added, "total_in_file": len(ips), "addresses": list(CUSTOM_ADDRESSES)}
+    return {
+        "ok": True,
+        "added": added,
+        "total_in_file": len(ips),
+        "addresses": list(CUSTOM_ADDRESSES),
+    }
+
 
 # ── Notifications API ────────────────────────────────────────────────────
+
 
 @app.get("/api/notifications")
 async def api_get_notifications(_=Depends(require_auth)):
     return {"notifications": await get_notifications()}
 
+
 @app.get("/api/notifications/count")
 async def api_notification_count(_=Depends(require_auth)):
     return {"count": await get_unread_notification_count()}
+
 
 @app.post("/api/notifications/{nid}/seen")
 async def api_mark_seen(nid: int, _=Depends(require_auth)):
@@ -2029,6 +2593,7 @@ async def api_mark_seen(nid: int, _=Depends(require_auth)):
         conn.close()
     return {"ok": True}
 
+
 @app.post("/api/notifications/seen-all")
 async def api_mark_all_seen(_=Depends(require_auth)):
     conn = get_db()
@@ -2039,6 +2604,7 @@ async def api_mark_all_seen(_=Depends(require_auth)):
         conn.close()
     return {"ok": True}
 
+
 @app.delete("/api/notifications")
 async def api_clear_notifications(_=Depends(require_auth)):
     conn = get_db()
@@ -2048,6 +2614,7 @@ async def api_clear_notifications(_=Depends(require_auth)):
     finally:
         conn.close()
     return {"ok": True}
+
 
 @app.websocket("/ws/live-logs")
 async def ws_live_logs(websocket: WebSocket, token: str | None = None):
@@ -2073,17 +2640,25 @@ async def ws_live_logs(websocket: WebSocket, token: str | None = None):
     except Exception:
         pass
 
+
 def _fmt_bytes(b: int) -> str:
-    if b >= 1_073_741_824: return f"{b / 1_073_741_824:.1f}GB"
-    if b >= 1_048_576: return f"{b / 1_048_576:.1f}MB"
+    if b >= 1_073_741_824:
+        return f"{b / 1_073_741_824:.1f}GB"
+    if b >= 1_048_576:
+        return f"{b / 1_048_576:.1f}MB"
     return f"{b / 1024:.1f}KB"
+
 
 def generate_landing_page(link: dict, uid: str, addresses: list[str]) -> str:
     used = link["used_bytes"]
     limit = link["limit_bytes"]
     expires_at_str = link.get("expires_at")
 
-    usage_str = f"{_fmt_bytes(used)} / Unlimited" if limit == 0 else f"{_fmt_bytes(used)} / {_fmt_bytes(limit)}"
+    usage_str = (
+        f"{_fmt_bytes(used)} / Unlimited"
+        if limit == 0
+        else f"{_fmt_bytes(used)} / {_fmt_bytes(limit)}"
+    )
     pct = round((used / limit) * 100, 1) if limit > 0 else 0
     rem = limit - used if limit > 0 else -1
     rem_str = _fmt_bytes(rem) if rem >= 0 else "Unlimited"
@@ -2118,7 +2693,7 @@ def generate_landing_page(link: dict, uid: str, addresses: list[str]) -> str:
 
     is_active = link["active"]
     status_text = "Active" if is_active else "Inactive"
-    
+
     # Color based on usage percentage
     if pct >= 90:
         ring_color1 = "#f87171"
@@ -2135,7 +2710,7 @@ def generate_landing_page(link: dict, uid: str, addresses: list[str]) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Luffy - {link['label']}</title>
+    <title>Luffy - {link["label"]}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         *{{margin:0;padding:0;box-sizing:border-box}}
@@ -2211,7 +2786,7 @@ def generate_landing_page(link: dict, uid: str, addresses: list[str]) -> str:
         .ring-svg{{width:160px;height:160px;transform:rotate(-90deg)}}
         .ring-bg{{fill:none;stroke:rgba(255,215,0,0.08);stroke-width:10}}
         .ring-fill{{fill:none;stroke-width:10;stroke-linecap:round;
-            stroke-dasharray:440;stroke-dashoffset:{440 - (440 * min(pct,100)/100):.1f};
+            stroke-dasharray:440;stroke-dashoffset:{440 - (440 * min(pct, 100) / 100):.1f};
             stroke:url(#ringGrad);filter:drop-shadow(0 0 8px {ring_color1});
             transition:stroke-dashoffset 1s ease}}
         .ring-center{{position:absolute;inset:0;display:flex;flex-direction:column;
@@ -2356,7 +2931,7 @@ def generate_landing_page(link: dict, uid: str, addresses: list[str]) -> str:
             </svg>
             <span class="header-title">LUFFY</span>
         </div>
-        <div class="header-sub">{link['label']} · Connection Status</div>
+        <div class="header-sub">{link["label"]} · Connection Status</div>
     </div>
 
     <!-- Usage Ring Card -->
@@ -2379,14 +2954,14 @@ def generate_landing_page(link: dict, uid: str, addresses: list[str]) -> str:
         </div>
 
         <div class="usage-nums">
-            {_fmt_bytes(used)} <span>/ {_fmt_bytes(limit) if limit > 0 else '∞'}</span>
+            {_fmt_bytes(used)} <span>/ {_fmt_bytes(limit) if limit > 0 else "∞"}</span>
         </div>
         <div class="usage-sub">{rem_str} remaining</div>
 
         <div class="info-row">
             <div class="info-box">
                 <div class="info-box-label">Status</div>
-                <div class="info-box-val {'green' if is_active else 'red'}">{status_text}</div>
+                <div class="info-box-val {"green" if is_active else "red"}">{status_text}</div>
             </div>
             <div class="info-box">
                 <div class="info-box-label">Expires</div>
@@ -2481,7 +3056,7 @@ def generate_landing_page(link: dict, uid: str, addresses: list[str]) -> str:
     // The #name fragment is what Hiddify shows as the profile name before
     // it even fetches the sublink, and is used as a fallback if the
     // content's own #profile-title header is missing or fails to parse.
-    const hiddifyProfileName = encodeURIComponent("Luffy-{link['label']}");
+    const hiddifyProfileName = encodeURIComponent("Luffy-{link["label"]}");
     const hiddifyImportUrl = "hiddify://import/" + subUrl + "#" + hiddifyProfileName;
 
     // Returns URL to the PNG icon for the given app name.
@@ -2747,11 +3322,17 @@ def generate_landing_page(link: dict, uid: str, addresses: list[str]) -> str:
     return html
 
 
-def generate_subscription_content(link: dict, uid: str, addresses: list[str]) -> str:
+def generate_subscription_content(
+    link: dict, uid: str, addresses: list[str]
+) -> str:
     used = link["used_bytes"]
     limit = link["limit_bytes"]
     expires_at_str = link.get("expires_at")
-    usage_str = f"{_fmt_bytes(used)} / ∞" if limit == 0 else f"{_fmt_bytes(used)} / {_fmt_bytes(limit)}"
+    usage_str = (
+        f"{_fmt_bytes(used)} / ∞"
+        if limit == 0
+        else f"{_fmt_bytes(used)} / {_fmt_bytes(limit)}"
+    )
     secs_left = seconds_until_expiry(expires_at_str)
     if secs_left is None:
         expiry_str = "∞"
@@ -2759,7 +3340,7 @@ def generate_subscription_content(link: dict, uid: str, addresses: list[str]) ->
         expiry_str = "Expired"
     else:
         expiry_str = f"{secs_left // 86400} Days Left"
-    
+
     links_out = links_for_all_variants(link, uid)
     for addr in addresses:
         links_out.extend(links_for_all_variants(link, uid, address=addr))
@@ -2773,7 +3354,9 @@ def generate_singbox_config(link: dict, uid: str, addresses: list[str]) -> str:
     dependency on Hiddify's vless://-URL parser entirely."""
     domain = get_domain()
 
-    def _vless_outbound(tag: str, server: str, port: int = DEFAULT_PORT) -> dict:
+    def _vless_outbound(
+        tag: str, server: str, port: int = DEFAULT_PORT
+    ) -> dict:
         return {
             "type": "vless",
             "tag": tag,
@@ -2796,22 +3379,28 @@ def generate_singbox_config(link: dict, uid: str, addresses: list[str]) -> str:
     tags = [f"Luffy-{link['label']}"]
     outbounds = [_vless_outbound(tags[0], domain)]
     for i, addr in enumerate(addresses):
-        tag = f"Luffy-{link['label']}-IP{i+1}"
+        tag = f"Luffy-{link['label']}-IP{i + 1}"
         tags.append(tag)
         outbounds.append(_vless_outbound(tag, addr))
 
     outbounds.append({"type": "direct", "tag": "direct"})
     outbounds.append({"type": "block", "tag": "block"})
-    outbounds.append({
-        "type": "selector",
-        "tag": "proxy",
-        "outbounds": tags + ["direct"],
-        "default": tags[0],
-    })
+    outbounds.append(
+        {
+            "type": "selector",
+            "tag": "proxy",
+            "outbounds": tags + ["direct"],
+            "default": tags[0],
+        }
+    )
 
     config = {
         "log": {"level": "warn"},
-        "dns": {"servers": [{"tag": "dns-remote", "address": "https://1.1.1.1/dns-query"}]},
+        "dns": {
+            "servers": [
+                {"tag": "dns-remote", "address": "https://1.1.1.1/dns-query"}
+            ]
+        },
         "outbounds": outbounds,
         "route": {"final": "proxy", "auto_detect_interface": True},
     }
@@ -2823,7 +3412,11 @@ def generate_clash_config(link: dict, uid: str, addresses: list[str]) -> str:
     used = link["used_bytes"]
     limit = link["limit_bytes"]
     expires_at_str = link.get("expires_at")
-    usage_str = f"{_fmt_bytes(used)} / ∞" if limit == 0 else f"{_fmt_bytes(used)} / {_fmt_bytes(limit)}"
+    usage_str = (
+        f"{_fmt_bytes(used)} / ∞"
+        if limit == 0
+        else f"{_fmt_bytes(used)} / {_fmt_bytes(limit)}"
+    )
     secs_left = seconds_until_expiry(expires_at_str)
     if secs_left is None:
         expiry_str = "∞"
@@ -2834,27 +3427,37 @@ def generate_clash_config(link: dict, uid: str, addresses: list[str]) -> str:
 
     variants = sanitize_variants(link.get("variants"))
 
-    def _proxy_entry(auth: str, fp: str, name: str, server: str, port: int = DEFAULT_PORT) -> str:
+    def _proxy_entry(
+        auth: str, fp: str, name: str, server: str, port: int = DEFAULT_PORT
+    ) -> str:
         # نکته: این خروجی کلش فقط ترابرد WS رو پوشش می‌ده؛ برای لینک‌های XHTTP از
         # همون لینک share (vless:// یا trojan://) استفاده کن.
-        cred_line = f'    uuid: {uid}\n' if auth == "vless" else f'    password: {uid}\n'
+        cred_line = (
+            f"    uuid: {uid}\n"
+            if auth == "vless"
+            else f"    password: {uid}\n"
+        )
         return (
             f'  - name: "{name}"\n'
-            f'    type: {auth}\n'
-            f'    server: {server}\n'
-            f'    port: {port}\n'
-            f'{cred_line}'
-            f'    tls: true\n'
-            f'    servername: {domain}\n'
-            f'    client-fingerprint: {fp}\n'
-            f'    network: ws\n'
-            f'    ws-path: /ws/{auth}/{uid}\n'
-            f'    ws-headers:\n'
-            f'      Host: {domain}\n'
+            f"    type: {auth}\n"
+            f"    server: {server}\n"
+            f"    port: {port}\n"
+            f"{cred_line}"
+            f"    tls: true\n"
+            f"    servername: {domain}\n"
+            f"    client-fingerprint: {fp}\n"
+            f"    network: ws\n"
+            f"    ws-path: /ws/{auth}/{uid}\n"
+            f"    ws-headers:\n"
+            f"      Host: {domain}\n"
         )
 
     # فقط auth هایی که فعالن و ترابردشون ws هست رو کلش می‌سازیم (محدودیت خودِ این export)
-    active_auths = [a for a in AUTH_TYPES if variants[a]["enabled"] and variants[a]["transport"] == "ws"]
+    active_auths = [
+        a
+        for a in AUTH_TYPES
+        if variants[a]["enabled"] and variants[a]["transport"] == "ws"
+    ]
 
     proxies = []
     proxy_name_list = []
@@ -2865,7 +3468,7 @@ def generate_clash_config(link: dict, uid: str, addresses: list[str]) -> str:
         proxies.append(_proxy_entry(auth, fp, name0, domain))
         proxy_name_list.append(name0)
         for i, addr in enumerate(addresses):
-            name_i = f"Luffy-{link['label']}{suffix}-IP{i+1}"
+            name_i = f"Luffy-{link['label']}{suffix}-IP{i + 1}"
             proxies.append(_proxy_entry(auth, fp, name_i, addr))
             proxy_name_list.append(name_i)
 
@@ -2888,17 +3491,17 @@ def generate_clash_config(link: dict, uid: str, addresses: list[str]) -> str:
         f"{proxies_yaml}\n"
         f"\n"
         f"proxy-groups:\n"
-        f'  - name: Proxy\n'
-        f'    type: select\n'
-        f'    proxies:\n'
-        f'{proxy_names}\n'
-        f'  - name: Auto\n'
-        f'    type: url-test\n'
-        f'    url: http://www.gstatic.com/generate_204\n'
-        f'    interval: 300\n'
-        f'    tolerance: 50\n'
-        f'    proxies:\n'
-        f'{proxy_names}\n'
+        f"  - name: Proxy\n"
+        f"    type: select\n"
+        f"    proxies:\n"
+        f"{proxy_names}\n"
+        f"  - name: Auto\n"
+        f"    type: url-test\n"
+        f"    url: http://www.gstatic.com/generate_204\n"
+        f"    interval: 300\n"
+        f"    tolerance: 50\n"
+        f"    proxies:\n"
+        f"{proxy_names}\n"
         f"\n"
         f"rules:\n"
         f"  - DOMAIN-SUFFIX,google.com,Proxy\n"
@@ -2911,6 +3514,7 @@ def generate_clash_config(link: dict, uid: str, addresses: list[str]) -> str:
         f"  - MATCH,DIRECT\n"
     )
 
+
 @app.get("/sub/{uid}")
 async def subscription_endpoint(uid: str, request: Request):
     async with LINKS_LOCK:
@@ -2918,10 +3522,10 @@ async def subscription_endpoint(uid: str, request: Request):
         if link is None:
             raise HTTPException(status_code=404, detail="link not found")
         link = dict(link)
-        
+
     if not link["active"]:
         raise HTTPException(status_code=403, detail="link disabled")
-        
+
     expires_at = parse_expires_at(link.get("expires_at"))
     if expires_at is not None and expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=403, detail="link expired")
@@ -2941,25 +3545,54 @@ async def subscription_endpoint(uid: str, request: Request):
     # format"). So known client fingerprints are checked FIRST and always
     # win, regardless of what Accept/UA otherwise look like.
     known_client_markers = [
-        "hiddify", "napsternet", "v2rayng", "v2box", "nekoray", "nekobox",
-        "sing-box", "singbox", "streisand", "karing", "shadowrocket",
-        "quantumult", "surge", "loon", "matsuri", "husi", "clash", "stash",
-        "verge", "clashx", "clashmeta", "cfw", "dart", "okhttp",
+        "hiddify",
+        "napsternet",
+        "v2rayng",
+        "v2box",
+        "nekoray",
+        "nekobox",
+        "sing-box",
+        "singbox",
+        "streisand",
+        "karing",
+        "shadowrocket",
+        "quantumult",
+        "surge",
+        "loon",
+        "matsuri",
+        "husi",
+        "clash",
+        "stash",
+        "verge",
+        "clashx",
+        "clashmeta",
+        "cfw",
+        "dart",
+        "okhttp",
     ]
     is_known_client = any(x in ua for x in known_client_markers)
 
     is_browser = (
         not is_known_client
-        and any(x in ua for x in ["mozilla", "chrome", "safari", "opera", "edge"])
+        and any(
+            x in ua for x in ["mozilla", "chrome", "safari", "opera", "edge"]
+        )
         and "text/html" in accept
     )
 
     if is_browser:
         return HTMLResponse(content=generate_landing_page(link, uid, addresses))
 
-    is_clash = ("hiddify" not in ua) and any(x in ua for x in ["clash", "stash", "verge", "clashx", "clashmeta", "cfw"])
+    is_clash = ("hiddify" not in ua) and any(
+        x in ua
+        for x in ["clash", "stash", "verge", "clashx", "clashmeta", "cfw"]
+    )
 
-    total_bytes = link["limit_bytes"] if link["limit_bytes"] > 0 else UNLIMITED_QUOTA_BYTES
+    total_bytes = (
+        link["limit_bytes"]
+        if link["limit_bytes"] > 0
+        else UNLIMITED_QUOTA_BYTES
+    )
     expire_ts = 0
     if expires_at is not None:
         expire_ts = int(expires_at.timestamp())
@@ -2979,14 +3612,17 @@ async def subscription_endpoint(uid: str, request: Request):
     headers = {
         "Content-Type": "text/plain; charset=utf-8",
         "profile-update-interval": "6",
-        "profile-title": "base64:" + base64.b64encode(f"Luffy-{link['label']}".encode()).decode(),
+        "profile-title": "base64:"
+        + base64.b64encode(f"Luffy-{link['label']}".encode()).decode(),
         "subscription-userinfo": f"upload={link['used_bytes']}; download=0; total={total_bytes}; expire={expire_ts}",
     }
 
     encoded = base64.b64encode(sub_content.encode()).decode()
     return Response(content=encoded, headers=headers)
 
+
 RELAY_BUF = 128 * 1024
+
 
 async def parse_vless_header(first_chunk: bytes):
     if len(first_chunk) < 24:
@@ -2996,26 +3632,32 @@ async def parse_vless_header(first_chunk: bytes):
     pos += 1 + addon_len
     command = first_chunk[pos]
     pos += 1
-    port = int.from_bytes(first_chunk[pos:pos + 2], "big")
+    port = int.from_bytes(first_chunk[pos : pos + 2], "big")
     pos += 2
     addr_type = first_chunk[pos]
     pos += 1
     if addr_type == 1:
-        addr_bytes = first_chunk[pos:pos + 4]
+        addr_bytes = first_chunk[pos : pos + 4]
         pos += 4
         address = ".".join(str(b) for b in addr_bytes)
     elif addr_type == 2:
         domain_len = first_chunk[pos]
         pos += 1
-        address = first_chunk[pos:pos + domain_len].decode("utf-8", errors="ignore")
+        address = first_chunk[pos : pos + domain_len].decode(
+            "utf-8", errors="ignore"
+        )
         pos += domain_len
     elif addr_type == 3:
-        addr_bytes = first_chunk[pos:pos + 16]
+        addr_bytes = first_chunk[pos : pos + 16]
         pos += 16
-        address = ":".join(f"{addr_bytes[i]:02x}{addr_bytes[i+1]:02x}" for i in range(0, 16, 2))
+        address = ":".join(
+            f"{addr_bytes[i]:02x}{addr_bytes[i + 1]:02x}"
+            for i in range(0, 16, 2)
+        )
     else:
         raise ValueError(f"unknown address type: {addr_type}")
     return command, address, port, first_chunk[pos:]
+
 
 async def parse_trojan_header(first_chunk: bytes):
     """پارس هدر Trojan: hex(SHA224(password))[56] + CRLF + (CMD+ATYP+DST.ADDR+DST.PORT) + CRLF + payload.
@@ -3024,7 +3666,7 @@ async def parse_trojan_header(first_chunk: bytes):
     if len(first_chunk) < 56 + 2 + 1 + 1 + 2 + 2:
         raise ValueError("chunk too small")
     pos = 56
-    if first_chunk[pos:pos + 2] != b"\r\n":
+    if first_chunk[pos : pos + 2] != b"\r\n":
         raise ValueError("invalid trojan header (missing CRLF after hash)")
     pos += 2
     command = first_chunk[pos]
@@ -3032,26 +3674,32 @@ async def parse_trojan_header(first_chunk: bytes):
     addr_type = first_chunk[pos]
     pos += 1
     if addr_type == 1:
-        addr_bytes = first_chunk[pos:pos + 4]
+        addr_bytes = first_chunk[pos : pos + 4]
         pos += 4
         address = ".".join(str(b) for b in addr_bytes)
     elif addr_type == 3:
         domain_len = first_chunk[pos]
         pos += 1
-        address = first_chunk[pos:pos + domain_len].decode("utf-8", errors="ignore")
+        address = first_chunk[pos : pos + domain_len].decode(
+            "utf-8", errors="ignore"
+        )
         pos += domain_len
     elif addr_type == 4:
-        addr_bytes = first_chunk[pos:pos + 16]
+        addr_bytes = first_chunk[pos : pos + 16]
         pos += 16
-        address = ":".join(f"{addr_bytes[i]:02x}{addr_bytes[i+1]:02x}" for i in range(0, 16, 2))
+        address = ":".join(
+            f"{addr_bytes[i]:02x}{addr_bytes[i + 1]:02x}"
+            for i in range(0, 16, 2)
+        )
     else:
         raise ValueError(f"unknown trojan address type: {addr_type}")
-    port = int.from_bytes(first_chunk[pos:pos + 2], "big")
+    port = int.from_bytes(first_chunk[pos : pos + 2], "big")
     pos += 2
-    if first_chunk[pos:pos + 2] != b"\r\n":
+    if first_chunk[pos : pos + 2] != b"\r\n":
         raise ValueError("invalid trojan header (missing trailing CRLF)")
     pos += 2
     return command, address, port, first_chunk[pos:]
+
 
 async def parse_proxy_header(auth: str, first_chunk: bytes):
     """بر اساس auth گرفته‌شده از مسیر URL (vless یا trojan)، هدر رو با پارسر درست می‌خونه."""
@@ -3059,10 +3707,12 @@ async def parse_proxy_header(auth: str, first_chunk: bytes):
         return await parse_trojan_header(first_chunk)
     return await parse_vless_header(first_chunk)
 
+
 def response_prefix_for_protocol(auth: str) -> bytes:
     """VLESS یک پاسخ ۲ بایتی (version=0 + no addons) قبل از اولین چانک دیتای برگشتی
     می‌فرسته؛ Trojan چنین چیزی نداره و کاملاً raw pass-through هست."""
     return b"" if auth == "trojan" else b"\x00\x00"
+
 
 async def check_quota(uid: str, extra_bytes: int) -> bool:
     async with LINKS_LOCK:
@@ -3076,10 +3726,12 @@ async def check_quota(uid: str, extra_bytes: int) -> bool:
             return True
         return (link["used_bytes"] + extra_bytes) <= link["limit_bytes"]
 
+
 async def add_usage(uid: str, n: int):
     async with LINKS_LOCK:
         if uid in LINKS:
             LINKS[uid]["used_bytes"] += n
+
 
 async def check_and_add_usage(uid: str, extra_bytes: int) -> bool:
     """Atomically check quota/expiry/active state and commit usage in a
@@ -3097,10 +3749,14 @@ async def check_and_add_usage(uid: str, extra_bytes: int) -> bool:
         expires_at = parse_expires_at(link.get("expires_at"))
         if expires_at is not None and expires_at < datetime.now(timezone.utc):
             return False
-        if link["limit_bytes"] != 0 and (link["used_bytes"] + extra_bytes) > link["limit_bytes"]:
+        if (
+            link["limit_bytes"] != 0
+            and (link["used_bytes"] + extra_bytes) > link["limit_bytes"]
+        ):
             return False
         link["used_bytes"] += extra_bytes
         return True
+
 
 async def ws_to_tcp(websocket, writer, conn_id, link_uid):
     try:
@@ -3139,7 +3795,10 @@ async def ws_to_tcp(websocket, writer, conn_id, link_uid):
         except Exception:
             pass
 
-async def tcp_to_ws(websocket, reader, conn_id, link_uid, resp_prefix: bytes = b"\x00\x00"):
+
+async def tcp_to_ws(
+    websocket, reader, conn_id, link_uid, resp_prefix: bytes = b"\x00\x00"
+):
     first = True
     try:
         while True:
@@ -3158,12 +3817,15 @@ async def tcp_to_ws(websocket, reader, conn_id, link_uid, resp_prefix: bytes = b
             hourly_traffic[now.strftime("%Y-%m-%d %H:00")] += size
             daily_traffic[now.strftime("%Y-%m-%d")] += size
             try:
-                await websocket.send_bytes((resp_prefix + data) if (first and resp_prefix) else data)
+                await websocket.send_bytes(
+                    (resp_prefix + data) if (first and resp_prefix) else data
+                )
                 first = False
             except Exception:
                 break
     except Exception:
         pass
+
 
 @app.websocket("/ws/{auth}/{uuid}")
 async def websocket_tunnel(websocket: WebSocket, auth: str, uuid: str):
@@ -3179,7 +3841,11 @@ async def websocket_tunnel(websocket: WebSocket, auth: str, uuid: str):
             await websocket.close(code=1008)
             return
         variant = link_data.get("variants", {}).get(auth)
-        if not variant or not variant.get("enabled") or variant.get("transport") != "ws":
+        if (
+            not variant
+            or not variant.get("enabled")
+            or variant.get("transport") != "ws"
+        ):
             await websocket.close(code=1008)
             return
         max_conn = link_data.get("max_connections", 0)
@@ -3210,7 +3876,9 @@ async def websocket_tunnel(websocket: WebSocket, auth: str, uuid: str):
             early_data = base64.urlsafe_b64decode(padded)
         except Exception:
             early_data = b""
-    await websocket.accept(subprotocol=early_data_hdr if early_data_hdr else None)
+    await websocket.accept(
+        subprotocol=early_data_hdr if early_data_hdr else None
+    )
     writer = None
     conn_id = None
     client_ip = get_client_ip(websocket)
@@ -3218,15 +3886,21 @@ async def websocket_tunnel(websocket: WebSocket, auth: str, uuid: str):
         if early_data:
             first_chunk = early_data
         else:
-            first_msg = await asyncio.wait_for(websocket.receive(), timeout=15.0)
+            first_msg = await asyncio.wait_for(
+                websocket.receive(), timeout=15.0
+            )
             if first_msg["type"] == "websocket.disconnect":
                 return
-            first_chunk = first_msg.get("bytes") or (first_msg.get("text") or "").encode()
+            first_chunk = (
+                first_msg.get("bytes") or (first_msg.get("text") or "").encode()
+            )
             if not first_chunk:
                 return
 
         try:
-            command, address, port, initial_payload = await parse_proxy_header(auth, first_chunk)
+            command, address, port, initial_payload = await parse_proxy_header(
+                auth, first_chunk
+            )
         except ValueError as e:
             logger.warning(f"Invalid proxy header: {e}")
             await websocket.close(code=1008, reason="invalid header")
@@ -3235,14 +3909,17 @@ async def websocket_tunnel(websocket: WebSocket, auth: str, uuid: str):
         conn_id = secrets.token_urlsafe(8)
         async with connections_lock:
             connections[conn_id] = {
-                "uuid": uuid, "ip": client_ip,
+                "uuid": uuid,
+                "ip": client_ip,
                 "connected_at": datetime.now(timezone.utc).isoformat(),
                 "bytes": 0,
             }
             connection_sockets[conn_id] = websocket
             link_ip_map[uuid].add(client_ip)
 
-        await _log_connection_event("connect", link_data_copy.get("label", uuid), uuid, client_ip)
+        await _log_connection_event(
+            "connect", link_data_copy.get("label", uuid), uuid, client_ip
+        )
 
         size = len(first_chunk)
         if not await check_and_add_usage(uuid, size):
@@ -3267,11 +3944,15 @@ async def websocket_tunnel(websocket: WebSocket, auth: str, uuid: str):
         try:
             backend_sock = writer.get_extra_info("socket")
             if backend_sock is not None:
-                backend_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                backend_sock.setsockopt(
+                    socket.IPPROTO_TCP, socket.TCP_NODELAY, 1
+                )
         except (OSError, AttributeError):
             pass
 
-        if initial_payload and not await check_and_add_usage(uuid, len(initial_payload)):
+        if initial_payload and not await check_and_add_usage(
+            uuid, len(initial_payload)
+        ):
             await websocket.close(code=1008, reason="quota exceeded")
             return
 
@@ -3290,9 +3971,21 @@ async def websocket_tunnel(websocket: WebSocket, auth: str, uuid: str):
             except Exception:
                 pass
 
-        task_up = asyncio.create_task(ws_to_tcp(websocket, writer, conn_id, uuid))
-        task_down = asyncio.create_task(tcp_to_ws(websocket, reader, conn_id, uuid, resp_prefix=response_prefix_for_protocol(auth)))
-        done, pending = await asyncio.wait({task_up, task_down}, return_when=asyncio.FIRST_COMPLETED)
+        task_up = asyncio.create_task(
+            ws_to_tcp(websocket, writer, conn_id, uuid)
+        )
+        task_down = asyncio.create_task(
+            tcp_to_ws(
+                websocket,
+                reader,
+                conn_id,
+                uuid,
+                resp_prefix=response_prefix_for_protocol(auth),
+            )
+        )
+        done, pending = await asyncio.wait(
+            {task_up, task_down}, return_when=asyncio.FIRST_COMPLETED
+        )
         for t in pending:
             t.cancel()
             try:
@@ -3304,7 +3997,9 @@ async def websocket_tunnel(websocket: WebSocket, auth: str, uuid: str):
         pass
     except Exception as exc:
         stats["total_errors"] += 1
-        error_logs.append({"error": str(exc), "time": datetime.now(timezone.utc).isoformat()})
+        error_logs.append(
+            {"error": str(exc), "time": datetime.now(timezone.utc).isoformat()}
+        )
         logger.exception("WebSocket error")
         try:
             await websocket.close(code=1011)
@@ -3337,18 +4032,35 @@ async def websocket_tunnel(websocket: WebSocket, auth: str, uuid: str):
             if info:
                 try:
                     connected_at = datetime.fromisoformat(info["connected_at"])
-                    duration_s = max(0, int((datetime.now(timezone.utc) - connected_at).total_seconds()))
+                    duration_s = max(
+                        0,
+                        int(
+                            (
+                                datetime.now(timezone.utc) - connected_at
+                            ).total_seconds()
+                        ),
+                    )
                 except Exception:
                     duration_s = 0
                 async with LINKS_LOCK:
-                    label = LINKS.get(info.get("uuid"), {}).get("label", info.get("uuid", uuid))
+                    label = LINKS.get(info.get("uuid"), {}).get(
+                        "label", info.get("uuid", uuid)
+                    )
                 extra = f"duration {duration_s}s, {_fmt_bytes(info.get('bytes', 0))}"
-                await _log_connection_event("disconnect", label, info.get("uuid", uuid), info.get("ip", client_ip), extra)
+                await _log_connection_event(
+                    "disconnect",
+                    label,
+                    info.get("uuid", uuid),
+                    info.get("ip", client_ip),
+                    extra,
+                )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # XHTTP transport (packet-up / stream-up) — جدا شده به xhttp_transport.py
 # ══════════════════════════════════════════════════════════════════════════════
 from xhttp_transport import router as xhttp_router
+
 app.include_router(xhttp_router)
 
 # ── HTML Panel (Gold/Neon Theme) ─────────────────────────────────────────
@@ -5025,17 +5737,21 @@ setInterval(()=>checkPanelVersion(true),5*60*1000);
 </body>
 </html>"""
 
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return HTMLResponse(content=PANEL_HTML)
+
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     return HTMLResponse(content=PANEL_HTML)
 
+
 @app.get("/panel", response_class=HTMLResponse)
 async def panel_page(request: Request):
     return HTMLResponse(content=PANEL_HTML)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=CONFIG["port"])
